@@ -1,49 +1,59 @@
-# Guide détaillé — SOC Lab · Microsoft Sentinel & Defender XDR
+# Guide détaillé : SOC Lab · Microsoft Sentinel & Defender XDR
 
-Le pas-à-pas complet du laboratoire, phase par phase. Companion du [README](../README.md).
+Le guide step-by-step complet du laboratoire, phase par phase.
 
-> **Légende des encadrés :** 💡 *ELI5* = explication simple · 🔧 *Leçon de ce build* = ce qui a réellement cloché et le correctif.
+```
+Légende des encadrés :
+> 💡 ELI5 = explication simple 
+> 🔧 Leçon de ce build = ce qui m'a posé problème dans ce déploiement + le correctif
+```
 
-> 🧪 Lab sanitisé : domaine fictif `contoso.onmicrosoft.com`, comptes génériques, aucune donnée réelle, aucun secret, aucune IP.
+> 🧪 Lab CLEAN : domaine fictif `contoso.onmicrosoft.com`, comptes génériques, aucune donnée réelle, aucun secret, aucune IP.
 
 ---
 
 Un laboratoire pratique couvrant l'ensemble des compétences d'analyste en opérations de sécurité, **bâti et testé de bout en bout dans un seul tenant**. Il garde une trace de ce qui a mal tourné en chemin, parce que ce sont ces moments-là qui apprennent le plus.
 
-Microsoft renomme souvent ses menus. Si un bouton n'est pas là où le guide l'indique, utilise la barre de recherche du portail.
 
-**Portails :** Defender = [security.microsoft.com](https://security.microsoft.com) · Azure = [portal.azure.com](https://portal.azure.com) · Microsoft 365 admin = [admin.microsoft.com](https://admin.microsoft.com) · Entra = [entra.microsoft.com](https://entra.microsoft.com) · Purview = [purview.microsoft.com](https://purview.microsoft.com)
+
+**Portails MS :**  
+   - Defender → [security.microsoft.com](https://security.microsoft.com)  
+   - Azure → [portal.azure.com](https://portal.azure.com)  
+   - Microsoft 365 admin → [admin.microsoft.com](https://admin.microsoft.com)  
+   - Entra → [entra.microsoft.com](https://entra.microsoft.com)  
+   - Purview → [purview.microsoft.com](https://purview.microsoft.com)  
+
 
 **Règles pour tout le lab**
 
 - N'utiliser que des comptes et des VM jetables. Ne jamais lancer de test d'attaque sur ton PC quotidien.
 - Garder chaque nom d'utilisateur, mot de passe et nom de ressource dans un fichier de notes.
 - Prendre un instantané (snapshot) de la VM avant chaque test d'attaque.
-- Arrêter (désallouer) les VM Azure à la fin de chaque session. C'est le plus gros levier de coût du lab.
-- Flouter ton IP publique résidentielle dans les captures que tu partages. Elle apparaît dans les journaux de connexion, les règles NSG et les titres d'incidents.
+- Arrêter (désallouer) les VM Azure à la fin de chaque session. C'est le plus gros levier de $ du lab.
 
-**Noms utilisés dans ce build**
+
+**Nomenclature du déploiement :**
 
 | Élément | Nom |
 | --- | --- |
-| Tenant / admin | `contoso.onmicrosoft.com` / `lab.admin` (Global Administrator) |
+| Tenant/admin | `contoso.onmicrosoft.com` / `lab.admin` (Global Administrator) |
 | Comptes de test | `soc.reader`, `soc.analyst`, `soc.engineer`, `soc.target1`, `soc.target2` |
-| Groupe de ressources / workspace | `RG-SOC-LAB` / `law-soc` (East US). Les noms Azure ne sont pas sensibles à la casse. |
-| VM Windows 11 locale (VMware) | `CLOUD-W11`, dans le groupe d'appareils `Lab-Win` |
+| Groupe de ressources/workspace | `RG-SOC-LAB` / `law-soc` (East US) |
+| VM Windows 11 locale (via VMware) | `CLOUD-W11`, dans le groupe d'appareils `Lab-Win` |
 | VM Azure | `CLOUD-WINDOWS` (admin local `winadmin`), `CLOUD-UBUNTU` (utilisateur `linuxadmin`) |
-| Préfixes de règles | `SR -` planifiée, `NRT -` quasi temps réel, `CD -` détection custom, `AR -` règle d'automatisation, `PB-` playbook (espaces interdits) |
+| Préfixes de règles | `SR -` scheduled, `NRT -` near-real time, `CD -` détection custom, `AR -` règle d'automatisation, `PB-` playbook |
 
 ---
 
-## Phase 0 : Licences, tenant et garde-fous
+## Phase 0 : Licences, tenant et protections
 
-L'essai Microsoft 365 E5 n'était pas offert à ce tenant, donc le lab assemble les mêmes pièces séparément : **Office 365 E5** (essai) + **Defender for Endpoint P2** (acheté pour un mois) + **Entra ID P2** (essai) + **Intune Plan 1** (essai, voir 1.5b).
+L'essai Microsoft 365 E5 n'était pas offert au moment de la création de ce tenant, donc le lab assemble les mêmes pièces séparément : **Office 365 E5** (essai) + **Defender for Endpoint P2** (acheté pour un mois, un peu moins de 10$) + **Entra ID P2** (essai) + **Intune Plan 1** (essai, voir 1.5b).  
 
 ### 0.1 Acheter Defender for Endpoint P2 pour un mois
 
 > **💡 ELI5**
 >
-> **Vois ça comme engager le gardien de sécurité pour un mois.** Defender for Endpoint est le gardien qui vit sur chaque ordinateur et surveille tout ce qu'il fait. P2 est la version qui tient un registre complet et qui peut agir : isoler une machine, collecter des preuves. Tu achètes un mois et tu le règles tout de suite pour qu'il s'annule, afin qu'un deuxième mois ne soit jamais facturé par accident.
+> **Vois ça comme engager le gardien de sécurité pour un mois.** Defender for Endpoint est le gardien qui vit sur chaque ordinateur et surveille tout ce qu'il fait. P2 est la version qui tient un registre complet et qui peut agir : isoler une machine, collecter des preuves. Tu achètes un mois et tu l'annules directement après, afin qu'un deuxième mois ne te soit jamais facturé par accident.
 
 1. admin.microsoft.com > **Marketplace** (ou Billing > Purchase services) > **Microsoft Defender for Endpoint P2**.
 2. Durée d'abonnement **1 month**, facturation **Pay monthly**, quantité **1** (environ 8,52 $ CA avant taxes dans ce build). Ne jamais prendre les options 1 an ou 3 ans. **Buy**.
@@ -54,7 +64,7 @@ L'essai Microsoft 365 E5 n'était pas offert à ce tenant, donc le lab assemble 
 
 > **💡 ELI5**
 >
-> **Entra ID est la réception qui vérifie chaque badge ; P2 ajoute un expert en fraude à la réception.** Avec P2, Entra remarque les connexions étranges (un réseau anonyme, un trajet improbable) et marque l'utilisateur comme risqué. Sans ça, tu vois seulement que quelqu'un s'est connecté, pas si ça avait l'air suspect. L'essai dure 30 jours, alors active-le juste avant d'en avoir besoin.
+> **Entra ID est la réceptioniste qui vérifie chaque badge pour valider ton accès ; P2 ajoute un expert en fraude à la réception.** Avec P2, Entra remarque les connexions étranges (un réseau anonyme, un trajet improbable) et marque l'utilisateur comme risqué (*Risky User*). Sans ça, tu vois seulement que quelqu'un s'est connecté, pas si ça avait l'air suspect. L'essai dure 30 jours, alors active-le juste avant d'en avoir besoin.
 
 Entra admin center > **Billing > Licenses > Licensed features > Activate** sous Entra ID P2 (30 jours, 100 licences). Active-le peu avant la phase 2.5 pour que les 30 jours couvrent le travail d'identité des phases 2 à 4. Assigne-le à `lab.admin`, `soc.analyst` et `soc.target1`.
 
@@ -62,7 +72,7 @@ Entra admin center > **Billing > Licenses > Licensed features > Activate** sous 
 
 > **💡 ELI5**
 >
-> **Sentinel et Defender doivent habiter dans le même immeuble pour se parler.** L'immeuble, c'est le tenant, ton organisation dans le cloud de Microsoft. L'abonnement Azure est ce qui paie Sentinel ; s'il est enregistré dans un autre tenant, les deux ne peuvent pas se connecter. Le déplacer, c'est comme changer l'adresse d'un compte : facile tant que la maison est vide, pénible une fois qu'elle est pleine.
+> **Sentinel et Defender doivent habiter dans le même immeuble pour se parler.** L'immeuble, c'est le tenant, ton organisation dans le cloud de Microsoft. L'abonnement Azure est ce qui paie Sentinel ; s'il est enregistré dans un autre tenant (immeuble), les deux ne peuvent pas se parler.
 
 Sentinel ne se connecte à Defender XDR que lorsque les deux sont dans un même tenant. Si ton abonnement Azure vit dans un autre annuaire (ici : *Default Directory*), déplace-le pendant qu'il ne contient aucune ressource.
 
@@ -71,11 +81,11 @@ Sentinel ne se connecte à Defender XDR que lorsque les deux sont dans un même 
 3. Bascule vers l'annuaire du lab. Les anciennes attributions de rôle sont perdues, donc en tant que `lab.admin` active Entra ID > **Properties > Access management for Azure resources**, donne-toi **Owner** dans l'**Access control (IAM)** de l'abonnement, puis remets le réglage à off.
 4. Solution de repli si Change directory est bloqué : crée un abonnement pay-as-you-go sous `lab.admin`, avec une alerte de budget d'abord.
 
-### 0.4 Garde-fous
+### 0.4 Précautions
 
 > **💡 ELI5**
 >
-> **Les garde-fous, c'est l'alarme sur ta carte de crédit.** Les essais deviennent discrètement des abonnements payants, et les VM coûtent de l'argent à chaque heure où elles tournent. Une alerte de budget et quelques rappels au calendrier font que tu l'apprends avant la facture.
+> **Vois les comme une alarme sur ta carte de crédit.** Les essais deviennent discrètement des abonnements payants, et les VM coûtent de l'argent à chaque heure où elles tournent. Une alerte de budget et quelques rappels au calendrier font que tu l'apprends avant qu'il ne soit trop tard.
 
 1. Azure **Cost Management > Budgets** : un petit budget avec des alertes à 50 % et 90 %.
 2. Rappels au calendrier quelques jours avant la fin de chaque essai : « vérifier Billing > Your products ».
@@ -100,17 +110,17 @@ Sentinel ne se connecte à Defender XDR que lorsque les deux sont dans un même 
 
 Un compte par rôle SOC, pour tester ce que chacun peut et ne peut pas faire. admin.microsoft.com > **Users > Active users > Add a user**, une fois par compte.
 
-- **Licences :** Office 365 E5 pour les cinq. Ne jamais cocher **Defender for Endpoint P2** pour quelqu'un d'autre que `lab.admin` : la case achète une licence supplémentaire.
+- **Licences :** Office 365 E5 pour les cinq. Ne jamais cocher **Defender for Endpoint P2** pour quelqu'un d'autre que `lab.admin` : cela achète une licence supplémentaire.
 - **Optional settings > Roles > Admin center access :** coche le rôle Entra ci-dessous. Il est attribué immédiatement.
-- **Mot de passe :** définis le tien (Edit > Let me create the password) et note-le.
+- **Mot de passe :** définis le tien (Edit > Let me create the password) et note-le quelque part.
 
 | Compte | Rôle | Rôle Entra | Rôles Azure (1.6) |
 | --- | --- | --- | --- |
 | `lab.admin` | Admin du tenant, pas pour le quotidien | Global Administrator | Owner |
-| `soc.reader` | Observateur en lecture seule | Security Reader | Microsoft Sentinel Reader |
+| `soc.reader` | Observateur en lecture seule (READ-ONLY) | Security Reader | Microsoft Sentinel Reader |
 | `soc.analyst` | Triage et réponse | Security Operator | Microsoft Sentinel Responder + Playbook Operator |
 | `soc.engineer` | Construit règles, connecteurs, classeurs, playbooks | Security Administrator | Microsoft Sentinel Contributor + Logic App Contributor |
-| `soc.target1`, `soc.target2` | Utilisateurs ordinaires que tu attaques | aucun | aucun |
+| `soc.target1`, `soc.target2` | Utilisateurs ordinaires que nous allons attaquer | aucun | aucun |
 
 ### 1.2 Créer le workspace Sentinel
 
@@ -118,22 +128,22 @@ Un compte par rôle SOC, pour tester ce que chacun peut et ne peut pas faire. ad
 >
 > **Le workspace Log Analytics est l'entrepôt ; Sentinel est l'équipe de sécurité qui travaille dedans.** Chaque journal que tu collectes est stocké dans le workspace. Sentinel ajoute l'analyse par-dessus : des règles qui lisent les journaux, des incidents, de l'automatisation. Le connecter au portail Defender met tout sur un seul écran au lieu de deux.
 
-1. Azure portal > **Log Analytics workspaces > Create**. Groupe de ressources : nouveau `RG-SOC-LAB`. Nom `law-soc`. Région : la plus proche de toi (East US ici). Create.
+1. Azure portal > **Log Analytics workspaces > Create**. Groupe de ressources : nouveau `RG-SOC-LAB`. Nom `law-soc`. Région : la plus proche de toi (East-US dans mon cas). Create.
 2. **Microsoft Sentinel > Create** > sélectionne `law-soc` > **Add**.
 3. Portail Defender : cherche **Microsoft Sentinel** dans le menu de gauche. En tant qu'Owner de l'abonnement, le workspace est généralement onboardé automatiquement. Sinon : **System > Settings > Microsoft Sentinel > Connect a workspace** > `law-soc` > marque-le **Primary**.
 
-À partir d'ici, le lab utilise le portail Defender (la plateforme SecOps unifiée) pour Sentinel partout où c'est possible.
+À partir d'ici, le lab utilise le portail Defender (la plateforme SecOps unifiée) pour Sentinel partout où c'est possible. Fort.  
 
 ### 1.3 Construire la machine de test Windows 11 (VMware, sur ton propre ordinateur)
 
 > **💡 ELI5**
 >
-> **Un mannequin d'entraînement.** Une VM sur ton propre PC est un ordinateur jetable que tu peux attaquer, remplir de fichiers de test et restaurer. L'instantané `clean` est ton point de sauvegarde : si quelque chose tourne mal, tu y reviens en une minute.
+> **Un mannequin d'entraînement.** Une VM sur ton propre PC est un ordinateur jetable que tu peux attaquer, remplir de fichiers de test et restaurer. Le `clean` snapshot est ton point de départ/sauvegarde : si quelque chose tourne mal, tu y reviens en un clique.  
 
-Une VM locale économise du crédit Azure et démontre un onboarding de style sur site, par opposition aux VM natives Azure de la phase 2.
+Une VM locale économise du crédit Azure et démontre un onboarding de style *on-prem*, par opposition aux VM Azure de la phase 2.
 
-1. Télécharge l'**ISO d'évaluation de Windows 11 Enterprise** depuis le Microsoft Evaluation Center.
-2. VMware Workstation Player (ou Fusion) : 4 Go de RAM, 60 Go de disque, réseau NAT (il a besoin d'un accès Internet sortant).
+1. Télécharge l'**ISO de Windows 11 Enterprise**.
+2. VMware Workstation Player : 4 Go de RAM, 60 Go de disque, réseau NAT (la box a besoin d'un accès Internet sortant).
 3. Installe Windows avec un compte admin local, puis prends un instantané appelé `clean` avant d'onboarder quoi que ce soit.
 
 ### 1.4 L'onboarder dans Defender for Endpoint
@@ -155,15 +165,14 @@ Une VM locale économise du crédit Azure et démontre un onboarding de style su
 > **Maintenant tu donnes des instructions au gardien.** Les fonctionnalités avancées décident ce que le gardien a le droit de faire, comme ouvrir un shell à distance ou bloquer de lui-même. Le groupe d'appareils décide jusqu'où il peut aller sans demander (ici : corriger les menaces automatiquement). Les notifications décident qui est appelé quand quelque chose arrive.
 
 1. **Advanced features** (Settings > Endpoints > General) : active **Live Response**, **Live Response for unsigned scripts** et **EDR in block mode**. Laisse *Automatically resolve alerts* activé. Note les autres interrupteurs (Custom network indicators, Tamper protection, Microsoft Intune connection). Save.
-2. **Device group** (Settings > Endpoints > Permissions > **Device groups > Add**) : nom `Lab-Win`, règle de correspondance **Name starts with** `CLOUD-W11` AND **OS in** Windows 11, niveau d'automatisation **Full - remediate threats automatically**, aucun groupe d'accès utilisateur. Save, et vérifie que `Lab-Win` est **Rank 1**, au-dessus de *Ungrouped devices*. L'appartenance peut prendre 15-30+ minutes.
+2. **Device group** (Settings > Endpoints > Permissions > **Device groups > Add**) : nom `Lab-Win`, règle de correspondance **Name starts with** `CLOUD-W11` AND **OS in** Windows 11, niveau d'automatisation **Full - remediate threats automatically**, aucun groupe d'accès utilisateur. Save, et vérifie que `Lab-Win` est **Rank 1**, au-dessus de *Ungrouped devices*. L'appartenance peut prendre 15-30+ minutes (dans mon cas, du moins).
 3. **Email notifications**, vers une adresse que tu lis vraiment :
    - **Alerts :** Settings > Endpoints > General > **Email notifications** > ajoute une règle (`Lab-Alerts-All`), tous les appareils, toutes les sévérités (les alertes de test sont Informational), *Include device information* activé. Si la page a aussi un onglet **response actions**, ajoute-y une règle également.
    - **Incidents :** Settings > Microsoft Defender XDR > **Email notifications > Incidents** > ajoute une règle : toutes les sévérités, statuts et sources.
    - **Threat analytics :** même page > onglet **Threat analytics** > ajoute une règle (nom en lettres et chiffres seulement, p. ex. `LABTHREATALL`), tous les rapports nouveaux et mis à jour.
 4. **Règles ASR en mode audit :** Endpoints > **Configuration management > Endpoint security policies > Create new policy** > Windows > *Attack surface reduction rules*. Nom `LabASRAudit`. Mets **chaque règle sur Audit** (l'audit ne bloque jamais) et **Controlled folder access** sur **Audit mode**. Assigne-la à un groupe d'appareils (nécessite Intune, voir 1.5b).
 5. **Alert tuning :** Settings > Microsoft Defender XDR > **Alert tuning**. Ouvre les règles intégrées et le formulaire *Add rule* (masquer ou résoudre les alertes qui correspondent à des conditions). N'en crée pas encore : il n'y a pas d'alertes bruyantes à ajuster.
-6. **Automated investigation et attack disruption :** l'AIR est piloté par le niveau d'automatisation de chaque groupe d'appareils (étape 2). L'attack disruption est activé par défaut. Ses actions, et celles de l'AIR, apparaissent dans l'**Action center**, que tu passeras en revue en 4.4.
-7. **Explore :** ouvre chaque page sous Settings > Endpoints > **Rules** (Indicators, Alert suppression, Web content filtering, Automation uploads and folder exclusions) et **General**. On te demande à l'examen où vivent les choses.
+6. **Automated investigation et attack disruption :** l'AIR est piloté par le niveau d'automatisation de chaque groupe d'appareils (étape 2). L'attack disruption est activé par défaut. Ses actions, et celles de l'AIR, apparaissent dans l'**Action center**, qu'on regardera plus en détail en 4.4.
 
 ### 1.5b Enrôlement Intune
 
@@ -173,11 +182,11 @@ Une VM locale économise du crédit Azure et démontre un onboarding de style su
 
 Nécessaire pour que la politique ASR s'applique réellement à `CLOUD-W11`.
 
-1. **Licence :** Office 365 E5 n'inclut pas Intune. Marketplace > **Microsoft Intune Plan 1 (Trial)**, la ligne étiquetée TRIAL / « Free for 1 month » (pas la ligne payante ni *Device*). Annulation à l'expiration, assigne à `lab.admin`.
+1. **Licence :** Office 365 E5 n'inclut pas Intune. Marketplace > **Microsoft Intune Plan 1 (Trial)**, la ligne étiquetée TRIAL (pas la ligne payante ni *Device*). Annulation à l'expiration, assigne à `lab.admin`.
 2. **Connecter Defender for Endpoint et Intune :** portail Defender > Settings > Endpoints > Advanced features > **Microsoft Intune connection** > On > Save. Puis dans Intune > Endpoint security > Microsoft Defender for Endpoint, **Refresh** jusqu'à ce que la connexion affiche **Available**, active *Allow Microsoft Defender for Endpoint to enforce Endpoint Security Configurations* et l'interrupteur de conformité Windows, Save.
 3. **Portée MDM :** Entra > Mobility (MDM and MAM) > Microsoft Intune > MDM user scope **Some** > un groupe contenant `lab.admin` (`SOC-LAB` ici) > Save.
-4. **Enrôler depuis l'intérieur de la VM :** Settings > Accounts > Access work or school > **Connect** > connecte-toi comme `lab.admin`. Un **Sync** manuel sur la même page accélère son apparition dans Intune (jusqu'à une heure).
-5. De retour dans les **Assignments** de la politique ASR : tape `SOC-LAB` dans la recherche de groupe (elle ne liste rien tant que tu ne tapes pas), sélectionne le groupe, enregistre. Vérifie sur la VM, en PowerShell admin :
+4. **Enrôler depuis l'intérieur de la VM :** Settings > Accounts > Access work or school > **Connect** > connecte-toi comme `lab.admin`. Un **Sync** manuel sur la même page accélère son apparition dans Intune.
+5. De retour dans les **Assignments** de la politique ASR : tape `SOC-LAB` dans la recherche de groupe, sélectionne le groupe, enregistre. Vérifie sur la VM, en PowerShell admin :
 
 ```
 Get-MpPreference | Select-Object -ExpandProperty AttackSurfaceReductionRules_Ids
@@ -189,30 +198,31 @@ Chaque GUID de règle ASR devrait être listé (17 dans ce build ; Microsoft en 
 
 > **💡 ELI5**
 >
-> **Les badges pour l'immeuble de l'équipe de sécurité.** Sentinel vit dans Azure, donc ses permissions sont des rôles Azure sur le groupe de ressources. Ils viennent en paires parce que les playbooks vivent dans un immeuble séparé (Logic Apps) : avoir le droit de gérer les incidents ne veut pas dire qu'on a le droit de démarrer le robot qui les traite.
+> **Les badges pour l'immeuble de l'équipe de sécurité.** Sentinel vit dans Azure, donc ses permissions sont des rôles Azure sur le groupe de ressources. Ils viennent en paires parce que les playbooks vivent dans un immeuble **séparé** (Logic Apps) : avoir le droit de gérer les incidents ne veut pas dire qu'on a le droit de démarrer le robot qui les traite.
 
-`RG-SOC-LAB` > **Access control (IAM) > Add > Add role assignment**, en utilisant la colonne « Rôles Azure » du tableau 1.1. Reader, Responder, Contributor et Playbook Operator sont dans l'onglet **Job function roles** ; Logic App Contributor se trouve par recherche.
+`RG-SOC-LAB` > **Access control (IAM) > Add > Add role assignment**, en utilisant la colonne « Rôles Azure » du tableau 1.1.
 
 - **Pourquoi les paires :** les playbooks sont des Logic Apps, une ressource Azure séparée. Sentinel Contributor construit tout à l'intérieur de Sentinel, mais modifier un playbook nécessite **Logic App Contributor**. De même, Responder gère les incidents, mais exécuter un playbook depuis un incident nécessite **Playbook Operator**.
-- **Type d'attribution :** le portail propose par défaut **Eligible** + **Time bound** (style PIM). Pour le lab, choisis **Active** + **Permanent**, sinon chaque compte doit activer son rôle avant de l'utiliser.
+- **Type d'attribution :** le portail propose par défaut **Eligible** + **Time bound** (style PIM). Pour le lab, choisis **Active** + **Permanent**, sinon chaque compte doit activer son rôle avant de l'utiliser (pas la meilleure pratique, mais pertinent dans un lab disons).
 
 ---
 
 ## Phase 2 : Ingérer les données
 
-Deux modèles de déploiement, tous deux à l'examen :
+2 modèles de déploiement :
 
 - **VM Azure** (`CLOUD-WINDOWS`, `CLOUD-UBUNTU`) : ingestion cloud-native avec l'**Azure Monitor Agent (AMA)** et des **data collection rules (DCR)**.
-- **Windows 11 local** (`CLOUD-W11`) : onboarding Defender for Endpoint de style sur site. Sa télémétrie reste dans Defender XDR, sauf si tu ajoutes AMA via Azure Arc (2.2b).
+- **Windows 11 local** (`CLOUD-W11`) : onboarding Defender for Endpoint. Sa télémétrie reste dans Defender XDR, sauf si tu ajoutes AMA via Azure Arc (*on-prem*)(2.2b).
 
-**L'endroit où vivent tes données** décide quel outil peut les utiliser. Garde ce tableau en tête pour tout le lab :
+**L'endroit où vivent tes données** décide quel outil peut les utiliser.  
+Free tip = Garde ce tableau en tête pour tout le lab :  
 
 | Donnée | Stockée dans | Interrogée via | Utilisable par |
 | --- | --- | --- | --- |
 | Données de connecteur : `SecurityEvent`, `Syslog`, `SigninLogs`, `AzureActivity`, `ThreatIntelIndicators`, tables custom `_CL` | Workspace Sentinel (`law-soc`) | Log Analytics (Azure) et Advanced hunting (Defender) | Règles analytiques Sentinel, classeurs, hunting |
 | Tables Defender XDR : `Device*`, `Email*`, `Identity*` | Defender XDR (environ 30 jours) | Advanced hunting seulement, sauf si streamées vers le workspace | Détections custom Defender, Advanced hunting (et UEBA pour `DeviceLogonEvents`, voir 3.3b) |
 
-Deux habitudes qui font gagner du temps : les tables Defender utilisent `Timestamp` et les tables du workspace utilisent `TimeGenerated` ; et Log Analytics affiche les heures en **UTC** tandis que les pages des portails affichent souvent l'heure locale.
+2 habitudes qui font gagner du temps : les tables Defender utilisent `Timestamp` et les tables du workspace utilisent `TimeGenerated` ; et Log Analytics affiche les heures en **UTC** tandis que les pages des portails affichent souvent l'heure locale.
 
 ### 2.1 Créer les VM Azure
 
@@ -222,10 +232,10 @@ Deux habitudes qui font gagner du temps : les tables Defender utilisent `Timesta
 
 1. **Ubuntu :** Virtual machines > Create. Groupe de ressources `RG-SOC-LAB`, même région, image *Ubuntu Server 24.04 LTS*, la plus petite taille disponible, disponibilité *No infrastructure redundancy required*. Authentification : SSH public key, nouvelle paire de clés, **télécharge le .pem immédiatement** (téléchargement unique). Nom `CLOUD-UBUNTU`.
    - **Networking :** nouvelle IP publique, NSG de la NIC **Basic**, entrant **SSH (22)** (le portail avertit que c'est ouvert sur Internet ; tu corriges ça ci-dessous). Coche *Delete public IP and NIC when VM is deleted*.
-   - **Management :** active **Auto-shutdown**, et revérifie-le avant Create (il ne persistait pas toujours d'un onglet à l'autre).
+   - **Management :** active **Auto-shutdown**.
    - **Après la création :** VM > Networking > la règle entrante SSH > Source **IP Addresses** = ton IP publique avec `/32`.
    - Connexion : `ssh -i CLOUD-UBUNTU_key.pem <user>@<VM public IP>`.
-2. **Windows Server :** même modèle, image *Windows Server 2022 or 2025 Datacenter*, nom d'utilisateur et mot de passe d'admin local (pas `Administrator`), **RDP (3389)** restreint à ton IP. Nom `CLOUD-WINDOWS`. Il coûte plus cher à l'heure qu'Ubuntu parce que la licence Windows est incluse.
+2. **Windows Server :** même modèle, image *Windows Server 2022 or 2025 Datacenter*, nom d'utilisateur et mot de passe d'admin local (pas `Administrator` ou `Admin` please), **RDP (3389)** restreint à ton IP. Nom `CLOUD-WINDOWS`. Il coûte plus cher à l'heure qu'Ubuntu parce que la licence Windows est incluse, c'est normal.  
 
 ### 2.2 Événements de sécurité Windows via AMA
 
@@ -233,7 +243,7 @@ Deux habitudes qui font gagner du temps : les tables Defender utilisent `Timesta
 >
 > **AMA est le livreur ; la DCR est le bon de livraison.** L'Azure Monitor Agent est installé sur la VM et ramasse les événements de sécurité Windows. La data collection rule dit quels événements prendre et où les livrer (ton workspace). Aucune ligne dans la table = aucune livraison, peu importe ce que dit la page du connecteur.
 
-1. Portail Defender > Microsoft Sentinel > **Content management > Content hub** > **Windows Security Events** > **Install**. Si le connecteur n'apparaît pas dans Data connectors, recharge la page à fond et enlève tout filtre : le délai de propagation était la cause à chaque fois ici.
+1. Portail Defender > Microsoft Sentinel > **Content management > Content hub** > **Windows Security Events** > **Install**.
 2. **Configuration > Data connectors** > **Windows Security Events via AMA** > **Open connector page** > **Create data collection rule** : nom `DCR-WINDOWS-EVENTS`, ressource `CLOUD-WINDOWS`, jeu d'événements **Common**.
 3. Après 15+ minutes, vérifie :
 
@@ -243,13 +253,13 @@ SecurityEvent                              // Windows security events (via AMA)
 | take 10                                  // any rows = data is flowing
 ```
 
-Si c'est vide, connecte-toi en RDP et génère de l'activité (`whoami /all`, `net user`, un mauvais mot de passe), puis relance la requête.
+Si c'est vide, connecte-toi en RDP et génère de l'activité (`whoami /all`, `net user`, un mauvais mot de passe, etc.), puis relance la requête.
 
-### 2.2b AMA sur la VM Windows 11 locale via Azure Arc (optionnel, non fait dans ce build)
+### 2.2b AMA sur la VM Windows 11 locale via Azure Arc (optionnel)
 
 > **💡 ELI5**
 >
-> **Arc est un badge visiteur pour les machines hors Azure.** Il permet à Azure de traiter ta VM maison comme l'une de ses propres ressources, pour que le même livreur (AMA) et le même bon de livraison (DCR) fonctionnent dessus. Même table au bout, une autre porte d'entrée.
+> **Arc est un badge visiteur pour les machines hors Azure.** Il permet à Azure de traiter ta VM locale comme l'une de ses propres ressources, pour que le même livreur (AMA) et le même bon de livraison (DCR) fonctionnent dessus. Même table au bout, une autre porte d'entrée.
 
 1. Azure portal > **Azure Arc > Servers > Add > Generate script**, et exécute-le en admin dans la VM. Il installe le Connected Machine agent.
 2. Une fois la machine *Connected*, ajoute-la comme ressource sur `DCR-WINDOWS-EVENTS`.
@@ -260,7 +270,7 @@ Si c'est vide, connecte-toi en RDP et génère de l'activité (`whoami /all`, `n
 
 > **💡 ELI5**
 >
-> **Même livreur, courrier Linux.** Syslog est le registre de Linux. Tu choisis quelles sections collecter (connexions, sudo, tâches planifiées) et à quel point un message doit être grave pour être ramassé. Tout le reste reste à *none*, pour ne pas payer à stocker du bruit.
+> **Même livreur, MAIS courrier Linux.** Syslog est le registre de Linux. Tu choisis quelles sections collecter (connexions, sudo, tâches planifiées) et à quel point un message doit être grave pour être ramassé. Tout le reste reste == *none*, pour ne pas payer à stocker du noise inutile.
 
 1. Content hub : installe **Syslog**. Data connectors > **Syslog via AMA** > **Create data collection rule** : `DCR-SYSLOG`, ressource `CLOUD-UBUNTU` (une VM Azure, donc pas besoin d'Arc).
 2. Onglet **Collect** : chaque facility est à *none* par défaut. Mets `LOG_AUTH` et `LOG_AUTHPRIV` → **LOG_INFO** (connexions, sudo, SSH), `LOG_CRON` → **LOG_INFO** (tâches planifiées, une technique de persistance, T1053.003), `LOG_DAEMON` → **LOG_WARNING**. Laisse le reste à none.
@@ -278,7 +288,7 @@ Syslog                                                      // Linux syslog (via
 | take 20                                                   // sample rows
 ```
 
-**CEF via AMA** fonctionne de la même façon mais nécessite un appareil qui envoie du CEF (pare-feu, IDS) vers un forwarder Linux. Ce lab n'en a aucun, donc c'est couvert conceptuellement seulement. Un connecteur sans rien derrière n'apprend rien.
+**CEF via AMA** fonctionne de la même façon mais nécessite un appareil qui envoie du CEF (pare-feu, IDS, etc.) vers un forwarder Linux. Ce lab n'en a aucun, donc c'est couvert conceptuellement seulement. Un connecteur sans rien derrière n'apprend rien.
 
 ### 2.4 Journaux d'activité Azure
 
@@ -297,11 +307,11 @@ AzureActivity                                                             // sub
 | project TimeGenerated, OperationNameValue, Caller, ActivityStatusValue  // what, who, result
 ```
 
-### 2.5 Defender XDR, Entra ID et un indicateur de menace
+### 2.5 Defender XDR, Entra ID et un threat indicator
 
 > **💡 ELI5**
 >
-> **Brancher les alarmes que tu possèdes déjà.** Defender XDR lève déjà des incidents ; dans le portail unifié, ils arrivent dans Sentinel sans configuration. Le connecteur Entra apporte les journaux de connexion : qui s'est connecté, d'où, et si ça a marché. L'indicateur de menace est un avis de recherche : si cette IP apparaît un jour dans tes journaux, une règle peut la signaler.
+> **Brancher les alarmes que tu possèdes déjà.** Defender XDR lève déjà des incidents ; dans le portail unifié, ils arrivent dans Sentinel sans configuration. Le connecteur Entra apporte les journaux de connexion : qui s'est connecté, d'où, et si ça a marché. Le threat indicator est un avis de recherche : si cette IP apparaît un jour dans tes journaux, une règle peut la signaler.
 
 **Connecteur Defender XDR :** une fois le workspace onboardé au portail Defender, les incidents et alertes arrivent automatiquement et il n'y a rien à connecter. Vérifie quels produits envoient des incidents :
 
@@ -310,7 +320,7 @@ SecurityIncident                     // incidents synced to the workspace
 | summarize count() by ProviderName  // expect "Microsoft XDR" once Defender incidents exist
 ```
 
-Installer la solution **Microsoft Defender XDR** depuis le Content hub est optionnel et sans danger : elle ajoute des modèles de règles, des requêtes de hunting et des classeurs, pas une deuxième connexion. Ne change pas les réglages d'incidents du connecteur, et ne crée pas de règles *Microsoft Security* (incident creation) : Defender XDR crée déjà ces incidents.
+Installer la solution **Microsoft Defender XDR** depuis le Content hub est optionnel et sans danger : elle ajoute des modèles de règles, des requêtes de hunting et des classeurs, pas une deuxième connexion. Ne change pas les réglages d'incidents du connecteur, et ne crée pas de règles *Microsoft Security* (incident creation) : Defender XDR crée déjà ces incidents, ce serait redondant.
 
 1. **Connecteur Entra ID :** Data connectors > **Microsoft Entra ID** > coche **Sign-in logs** et **Audit logs** > Apply.
 2. **Indicateur de menace :** portail Defender > **Threat intelligence > Intel management > Create > Indicator**. IPv4 `203.0.113.10` (une plage de documentation, jamais une adresse réelle), un nom, type *Malicious Activity*, dates de validité, confiance environ 70. Save. *Intel profiles* et *Intel explorer* au-dessus sont le flux de Microsoft et peuvent afficher « No access » ; c'est attendu.
@@ -327,7 +337,7 @@ ThreatIntelIndicators                    // current TI table (STIX pattern in Pa
 
 **Tables Defender** (Advanced hunting, une fois `CLOUD-W11` onboardé) : `DeviceInfo | take 10`, puis `DeviceProcessEvents | take 10`.
 
-### 2.6 Table de journaux personnalisée
+### 2.6 Table de journaux personnalisée (_CL)
 
 > **💡 ELI5**
 >
@@ -354,10 +364,10 @@ L'échantillon ne fait que définir les colonnes ; ses lignes ne sont pas ingér
 
 > **💡 ELI5**
 >
-> **La rétention, c'est combien de temps tu gardes les fichiers, et où.** Les 90 premiers jours restent sur le bureau : rapides à chercher et inclus avec Sentinel. Après ça, les journaux peuvent aller à l'archive (le data lake) : moins cher, mais plus lent à fouiller. Tu choisis par table, selon la fréquence à laquelle tu en auras besoin.
+> **La rétention, c'est combien de temps tu gardes les fichiers, et où.** Les 90 premiers jours restent sur le bureau (analytics tier) : rapides à chercher (scheduled, RT, ML, etc.) et inclus avec Sentinel. Après ça, les journaux peuvent aller à l'archive (le data lake) : moins cher, mais plus lent à fouiller (summary rules). Tu choisis par table, selon la fréquence à laquelle tu en auras besoin.
 
 1. **Rétention de table :** `law-soc` > Tables > n'importe quelle table > **…** > **Manage table**. Regarde la **analytics (interactive) retention** et la **total retention**. Un workspace Sentinel inclut 90 jours de rétention analytique sans coût de rétention supplémentaire ; au-delà, les données peuvent être conservées à long terme à moindre prix, mais sont plus lentes et plus limitées à interroger.
-2. **Data lake :** cherche une option d'onboarding au data lake Sentinel (System > Settings, la page d'accueil de Sentinel). Non disponible pour ce tenant : aucune option d'onboarding n'est apparue nulle part, probablement une limite de région ou d'essai. La phase 5.4 en dépend.
+2. **Data lake :** cherche une option d'onboarding au data lake Sentinel (System > Settings, la page d'accueil de Sentinel). Non disponible pour ce tenant : aucune option d'onboarding n'est apparue nulle part, probablement une limite de région ou d'essai.
 
 ---
 
@@ -369,11 +379,11 @@ L'échantillon ne fait que définir les colonnes ; ses lignes ne sont pas ingér
 
 **Descriptions de règles :** donne à chaque règle une description de la même forme : *QUOI* elle détecte, *POURQUOI* ça compte (technique ATT&CK), *COMMENT* elle fonctionne (source, planification), étapes de *TRIAGE*. Elle apparaît sur chaque alerte, donc elle sert aussi de notes de révision.
 
-### 3.1 Règle analytique planifiée
+### 3.1 Règle analytique scheduled
 
 > **💡 ELI5**
 >
-> **Une règle planifiée est un gardien qui fait des rondes.** Toutes les quelques minutes, elle exécute une requête sur la dernière tranche de journaux (« plus de 5 connexions échouées depuis un même endroit ? ») et lève une alerte si la réponse est oui. Le mappage d'entités lui dit ce qu'est chaque colonne (un utilisateur, un hôte, une IP), pour que les alertes liées soient regroupées en un seul incident.
+> **Une règle scheduled/planifiée est un gardien qui fait des rondes.** Toutes les quelques minutes, elle exécute une requête sur la dernière tranche de journaux ("plus de 5 connexions échouées depuis un même endroit ?") et lève une alerte si la réponse est oui. Le mappage d'entités lui dit ce qu'est chaque colonne (un utilisateur, un hôte, une IP), pour que les alertes liées soient regroupées en un seul incident.
 
 1. Microsoft Sentinel > **Configuration > Analytics > Create > Scheduled query rule**.
 2. **General :** `SR - MULTIPLE FAILED LOGONS`, sévérité Medium, tactique Credential Access, technique **T1110 Brute Force**.
@@ -826,3 +836,7 @@ Ne coche chaque point que si tu peux le faire sans le guide :
 6. Supprime le groupe de ressources `RG-SOC-LAB` : workspace, VM, DCR, DCE, playbook, classeurs. Au minimum, désalloue les VM.
 7. Vérifie **Billing > Your products** : tout réglé sur annulation à l'expiration, rien en renouvellement.
 8. Pour continuer à pratiquer, garde le tenant et la VM VMware (restaure à `clean`) et reconstruis le côté Azure au besoin.
+
+
+
+> RETOUR AU [README](../README.md).
