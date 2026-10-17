@@ -85,7 +85,7 @@ L'analyste (`soc.analyst`) prend l'incident, l'investigue (récit d'attaque, ent
 
 ## 📂 Documentation
 
-👉 **[Guide détaillé des phases](docs/GUIDE.md)** → guide step-by-step complet.
+👉 **[Guide step-by-step complet](docs/GUIDE.md)**
 
 ---
 
