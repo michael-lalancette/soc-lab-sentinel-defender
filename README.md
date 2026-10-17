@@ -67,7 +67,7 @@ L'analyste (`soc.analyst`) prend l'incident, l'investigue (récit d'attaque, ent
 | `SR - VIP SIGN-IN FAILURES` | Scheduled + watchlist | 3+ échecs sur un compte VIP | T1110 — Brute Force |
 | `CD - ENCODED POWERSHELL` | Detection custom (*_CL*) | `powershell -enc …` | T1059.001 — PowerShell |
 | `TI map IP → SigninLogs` | Modèle (TI) | Connexion depuis une IP (IoC connu) | x |
-| Anomalous RDP / UEBA | ML/behavior | Connexion RDP inhabituelle (atypique) | x |
+| Anomalous RDP/UEBA | ML/behavior | Connexion RDP inhabituelle (atypique) | x |
 
 
 ---
@@ -84,14 +84,19 @@ L'analyste (`soc.analyst`) prend l'incident, l'investigue (récit d'attaque, ent
 ---
 
 ## 📂 Documentation
+👉 **[Guide détaillé des phases](docs/GUIDE.md)**
 
-👉 **[Guide step-by-step complet](docs/GUIDE.md)**
-
+```
+lab-soc-sentinel-defender/
+  ├── docs/
+  │   └── GUIDE.md        
+  └── images/
+```
 ---
 
 ## Prochaines étapes
 
-J'étends présentement mes compétences vers la **gestion des identités et des accès (GIA/IAM)** avec **Entra ID** — accès conditionnel, Identity Protection, PIM et gouvernance des identités — en m'appuyant sur le travail d'identité déjà réalisé dans ce lab. 
+J'étends présentement mes compétences vers la **gestion des identités et des accès (GIA/IAM)** avec **Entra ID** (accès conditionnel, Identity Protection, PIM et gouvernance des identités) en m'appuyant sur le travail d'identité déjà réalisé dans ce lab. 
 
 ---
 
