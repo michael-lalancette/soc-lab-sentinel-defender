@@ -643,8 +643,7 @@ Puis ouvre la page de l'appareil `CLOUD-W11` > **Timeline** et retrouve les mêm
 > **💡 ELI5**
 >
 > **Un faux courriel d'hameçonnage, envoyé via le Attack Simulation Training** - piège réaliste à un utilisateur de test et enregistre qui clique. Ensuite, tu suis ce courriel comme un analyste.
-
-![Courriel de phishing impersonating DocuSign](images/creds-harvest-email.png)
+   ![Courriel de phishing impersonating DocuSign](../images/creds-harvest-email.png)
 
 1. **Construis un payload** : Attack simulation training > **Content library > Payloads > Tenant payloads > Create a payload**. Email, technique *Credential Harvest*. Donne un expéditeur/marque/objet crédibles (j'ai personnellement choisi DocuSign) qui racontent *une seule* histoire cohérente, ajoute le lien via **Phishing link > Select URL** (domaines de simulation appartenant à Microsoft, p. ex. `passwordle.it`), et attache-le à ton texte de bouton. Ajoute des **indicators** (usurpation de domaine sur l'adresse From, URL hyperlinking sur le lien).
 2. **Lance :** Simulations > **Launch a simulation**, technique Credential Harvest, choisis ton payload (onglet Tenant payloads), page de connexion par défaut, cible `soc.target1` seulement, pas de formation, ne pas livrer de notifications, lancer maintenant, fin dans 2 jours.
@@ -699,7 +698,7 @@ Puis ouvre la page de l'appareil `CLOUD-W11` > **Timeline** et retrouve les mêm
    <open items, who owns them, or "none, resolved">
    ```
   
-   ![Exemple commentaire d'incident](images/incident-comment.png)   
+   ![Exemple commentaire d'incident](../images/incident-comment.png)   
    
 4. **Entités :** clique le compte, l'IP et l'hôte pour ouvrir leurs pages. Depuis l'incident de force brute, demande : y a-t-il eu un 4624 (successful logon) réussi depuis la même IP ensuite ?
 5. **Incident PowerShell encodé :** décode la commande (3.3), trouve le processus dans la timeline de l'appareil grâce aux custom details `ProcessId` et `ProcessCreationTime`, et télécharge le paquet d'investigation depuis l'**Action center**.
@@ -732,7 +731,7 @@ Connecte-toi avec chaque compte dans une fenêtre privée et note ce qui fonctio
 
 ---
 
-## Phase 5 : Chasse aux menaces (threat hunting)
+## Phase 5 : Threat hunting
 
 ### 5.1 Exercices d'Advanced hunting
 
