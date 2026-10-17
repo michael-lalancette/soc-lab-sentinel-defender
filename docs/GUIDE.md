@@ -2,12 +2,6 @@
 
 Le guide step-by-step complet du laboratoire, phase par phase.
 
-```
-Légende des encadrés :
-> 💡 ELI5 = explication simple 
-> 🔧 Leçon de ce build = ce qui m'a posé problème dans ce déploiement + le correctif
-```
-
 > 🧪 Lab CLEAN : domaine fictif `contoso.onmicrosoft.com`, comptes génériques, aucune donnée réelle, aucun secret, aucune IP.
 
 ---
@@ -42,6 +36,8 @@ Un laboratoire pratique couvrant l'ensemble des compétences d'analyste en opér
 | VM Windows 11 locale (via VMware) | `CLOUD-W11`, dans le groupe d'appareils `Lab-Win` |
 | VM Azure | `CLOUD-WINDOWS` (admin local `winadmin`), `CLOUD-UBUNTU` (utilisateur `linuxadmin`) |
 | Préfixes de règles | `SR -` scheduled, `NRT -` near-real time, `CD -` détection custom, `AR -` règle d'automatisation, `PB-` playbook |
+
+![Architecture du lab : trois VM, le workspace Sentinel law-soc et le portail Defender unifié](../images/architecture.png)
 
 ---
 
@@ -430,6 +426,8 @@ SecurityEvent                                                                   
 3. Entités : Account FullName = `TargetAccount` (nouveau compte), un second Account FullName = `SubjectAccount` (créateur), Host HostName = `Computer`. Alert name format : `{{TargetAccount}} created by {{SubjectAccount}} on {{Computer}}`.
 4. Il n'y a pas de section de planification : les règles NRT s'exécutent chaque minute.
 
+   ![NRT-RULE](../images/NRT-USER-ACC-CREATED.png)   
+
 **Test now** (invite admin sur `CLOUD-WINDOWS`). `/add` est requis : sans lui, la commande essaie de changer le mot de passe d'un compte qui n'existe pas.
 
 ```
@@ -549,6 +547,10 @@ DeviceProcessEvents                                                             
 7. **Règle d'automatisation 3** (tâches) : `AR - VIP ESCALATE`, when incident is created, analytic rule name contains `SR - VIP SIGN-IN FAILURES`, actions **Assign owner** `soc.analyst`, **Add tags** `VIP`, `ID`, **Add task** *Check for a successful sign-in (ResultType 0) after the failures*, **Add task** *Check Identity Protection for this user's risk*, **Run playbook** `PB-INCIDENT-COMMENT`, ordre 3. Les règles d'automatisation n'agissent que sur les *nouveaux* incidents, donc teste avec une nouvelle rafale de mauvais mots de passe.
 
 **Test now :** répète la rafale RDP de 3.1 et le test `net user` de 3.2 (`labtemp2`). Les incidents de brute force devraient recevoir les tags et le commentaire ; l'incident de nouveau compte devrait recevoir l'owner `soc.analyst`, le statut *In progress* et le tag. Si le commentaire manque : Logic App > **Overview > Run history**. Aucune exécution = étape 4 ou la condition de la règle ; une exécution échouée = ouvre-la, clique sur l'étape rouge (403 = étape 3). Exécute aussi le playbook **à la main** : incident > **…** > **Run playbook**.
+
+
+   ![AUTOMATISATION-assigned-tags-playbook](../images/automatisation.png)
+
 
 ### 3.5 Classifiers (workbooks) et SOC optimization
 
@@ -737,9 +739,11 @@ Connecte-toi avec chaque compte dans une fenêtre privée et note ce qui fonctio
 
 > **💡 ELI5**
 >
-> **La chasse, c'est chercher sans alarme.** Au lieu d'attendre qu'une règle se déclenche, tu poses toi-même des questions aux journaux : qu'est-ce que PowerShell a démarré ? Qui a échoué le plus de connexions ? Advanced hunting est la barre de recherche sur les tables de Defender et, avec Sentinel connecté, ton workspace aussi.
+> **Le Advanced Hunting, c'est chercher sans alarme.** Au lieu d'attendre qu'une règle se déclenche, tu poses toi-même des questions aux journaux : qu'est-ce que PowerShell a démarré? Qui a échoué le plus de connexions? Advanced hunting est la barre de recherche sur les tables de Defender et, avec Sentinel connecté, ton workspace aussi.
 
-Portail Defender > **Hunting > Advanced hunting**. Ouvre l'onglet **Schema** pour voir quelle table contient quoi. Exécute chaque requête séparément :
+Portail Defender > **Hunting > Advanced hunting**. Pour voir quelle table contient quoi = `getschema`.  
+
+Exécute chaque requête séparément :  
 
 ```kql
 // Quels processus PowerShell a-t-il démarrés ?
