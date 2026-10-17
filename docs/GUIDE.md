@@ -733,7 +733,7 @@ Connecte-toi avec chaque compte dans une fenêtre privée et note ce qui fonctio
 
 ## Phase 5 : Threat hunting
 
-### 5.1 Exercices d'Advanced hunting
+### 5.1a Exercices d'Advanced hunting
 
 > **💡 ELI5**
 >
@@ -742,44 +742,184 @@ Connecte-toi avec chaque compte dans une fenêtre privée et note ce qui fonctio
 Portail Defender > **Hunting > Advanced hunting**. Ouvre l'onglet **Schema** pour voir quelle table contient quoi. Exécute chaque requête séparément :
 
 ```kql
-// Which processes did PowerShell start?
-DeviceProcessEvents                                    // Defender process launches
-| where InitiatingProcessFileName =~ "powershell.exe"  // parent process is PowerShell
-| summarize count() by FileName                        // child processes, counted
-| order by count_ desc                                 // most frequent first
+// Quels processus PowerShell a-t-il démarrés ?
+DeviceProcessEvents                                                                          // lancements de processus (Defender)
+| where InitiatingProcessFileName =~ "powershell.exe"                                        // processus parent = PowerShell
+| summarize count() by FileName                                                              // processus enfants, comptés
+| order by count_ desc                                                                       // les plus fréquents d'abord
 ```
 
 ```kql
-// Failed sign-ins per user
-SigninLogs                                           // Entra ID sign-ins (a Sentinel table)
-| where ResultType != "0"                            // failures only
-| summarize Failures = count() by UserPrincipalName  // failures per user
-| order by Failures desc                             // most failures first
+// Connexions échouées par utilisateur
+SigninLogs                                                                                   // connexions Entra ID (table Sentinel)
+| where ResultType != "0"                                                                    // échecs seulement
+| summarize Failures = count() by UserPrincipalName                                          // échecs par utilisateur
+| order by Failures desc                                                                     // le plus d'échecs d'abord
 ```
 
 ```kql
-// Which processes made outbound connections?
-DeviceProcessEvents                                                // process launches...
-| where Timestamp > ago(1d)                                        // ...last 24 hours
-| project DeviceId, ProcessId, FileName                            // the process that was started
+// Quels processus ont fait des connexions sortantes ?
+DeviceProcessEvents                                                                          // lancements de processus...
+| where Timestamp > ago(1d)                                                                  // ...dernières 24 heures
+| project DeviceId, ProcessId, FileName                                                      // le processus démarré
 | join kind=inner (
-    DeviceNetworkEvents                                            // network connections...
-    | where Timestamp > ago(1d)                                    // ...last 24 hours
-    | project DeviceId, ProcessId = InitiatingProcessId, RemoteIP  // the process that connected
-  ) on DeviceId, ProcessId                                         // same device + same process
-| summarize Connections = count() by FileName, RemoteIP            // connections per process + IP
-| top 10 by Connections                                            // 10 busiest
+    DeviceNetworkEvents                                                                      // connexions réseau...
+    | where Timestamp > ago(1d)                                                              // ...dernières 24 heures
+    | project DeviceId, ProcessId = InitiatingProcessId, RemoteIP                            // le processus qui s'est connecté
+  ) on DeviceId, ProcessId                                                                   // même appareil + même processus
+| summarize Connections = count() by FileName, RemoteIP                                      // connexions par processus + IP
+| top 10 by Connections                                                                      // les 10 plus actives
 ```
 
 ```kql
-// Process launches per hour
-DeviceProcessEvents                                // Defender process launches
-| where Timestamp > ago(7d)                        // last week
-| summarize Count = count() by bin(Timestamp, 1h)  // launches per hour
-| render timechart                                 // draw as a line chart
+// Lancements de processus par heure
+DeviceProcessEvents                                                                          // lancements de processus (Defender)
+| where Timestamp > ago(7d)                                                                  // dernière semaine
+| summarize Count = count() by bin(Timestamp, 1h)                                            // lancements par heure
+| render timechart                                                                           // tracer en courbe
 ```
 
 Puis ouvre **Threat intelligence > Threat analytics** et lis un rapport de bout en bout.
+
+### 5.1b Répertoire de requêtes KQL (par tactique MITRE)
+
+Les chasses les plus courantes en SOC, classées par tactique (TTPs).
+
+#### Initial Access
+
+   **1. Courriels de phishing/malware**
+   MITRE : [T1566 — Phishing](https://attack.mitre.org/techniques/T1566/)  
+   ```kql
+   EmailEvents                                                                                 // télémétrie courriel (Defender for Office 365)
+   | where Timestamp > ago(7d)                                                                 // derniers 7 jours
+   | where ThreatTypes has_any ("Phish","Malware")                                             // tags de menace
+   | project Timestamp, SenderFromAddress, RecipientEmailAddress, Subject,
+       ThreatTypes, DeliveryAction, DeliveryLocation                                           // contexte du message
+   | order by Timestamp desc                                                                   // plus récent d'abord
+   ```
+   > Investiguer : *Mêmes courriels à plusieurs destinataires, domaines suspects*
+   
+   
+   **2. Pièces jointes à risque**
+   MITRE : [T1566.001 — Spearphishing Attachment](https://attack.mitre.org/techniques/T1566/001/)  
+   ```kql
+   EmailAttachmentInfo                                                                         // pièces jointes (Defender for Office 365)
+   | where Timestamp > ago(7d)                                                                 // derniers 7 jours
+   | where FileType in~ ("exe","scr","js","vbs","ps1","hta","jar","lnk","iso","img")           // types d'exécutables
+       or FileName matches regex @"(?i)\.(exe|scr|js|vbs|ps1|hta|lnk)$"                        // extension dangereuse (suffix)
+   | project Timestamp, SenderFromAddress, RecipientEmailAddress, FileName, FileType, SHA256
+   | order by Timestamp desc                                                                   // plus récent d'abord
+   ```
+   > Investiguer : *Extensions exécutables, expéditeur externe inattendu/louche.*
+
+---
+
+#### Credential Access
+**3. Connexions échouées répétées (brute force)**
+MITRE : [T1110 — Brute Force](https://attack.mitre.org/techniques/T1110/)  
+```kql
+SecurityEvent                                                                                // journaux de sécurité Windows (Sentinel)
+| where TimeGenerated > ago(24h)                                                             // dernières 24 heures
+| where EventID == 4625                                                                      // 4625 = échec de connexion
+| summarize FailedAttempts = count()                                                         // compter les échecs
+    by Account, IpAddress                                                                    // par compte et IP source
+| order by FailedAttempts desc                                                               // les plus nombreux d'abord
+```
+   > Investiguer : *Beaucoup d'échecs depuis une IP, ou une IP qui vise plusieurs comptes. Chercher un 4624 (succès) ensuite.*
+
+**4. Password spraying (une IP, plusieurs comptes)**
+MITRE : [T1110.003 — Password Spraying](https://attack.mitre.org/techniques/T1110/003/)  
+```kql
+SecurityEvent                                                                                // journaux de sécurité Windows
+| where TimeGenerated > ago(1h)                                                              // dernière heure
+| where EventID == 4625                                                                      // échecs de connexion
+| summarize Failures = count(),                                                              // nb d'échecs
+    TargetedAccounts = dcount(Account)                                                       // nb de comptes distincts visés
+    by IpAddress                                                                             // par IP source
+| where Failures >= 20 or TargetedAccounts >= 5                                              // seuils d'exemple
+| order by TargetedAccounts desc                                                             // ciblage le plus large d'abord
+```
+   > Investiguer : *Une IP, quelques mots de passe, beaucoup de comptes = spray (vs brute force = 1 compte, beaucoup de mots de passe).*
+
+**5. Accès à la mémoire de LSASS (dumping)**
+MITRE : [T1003.001 — LSASS Memory](https://attack.mitre.org/techniques/T1003/001/)  
+```kql
+DeviceEvents                                                                                 // événements système (Defender for Endpoint)
+| where Timestamp > ago(7d)                                                                  // derniers 7 jours
+| where ActionType == "OpenProcessApiCall"                                                   // un processus en ouvre un autre
+| where FileName =~ "lsass.exe"                                                              // la cible = LSASS (identifiants en mémoire)
+| project Timestamp, DeviceName, InitiatingProcessFileName,
+    InitiatingProcessCommandLine, InitiatingProcessAccountName                               // QUI a tenté l'accès
+| order by Timestamp desc                                                                    // plus récent d'abord
+```
+   > Investiguer : *Un processus non-système qui ouvre LSASS = tentative de vol d'identifiants (ex. Mimikatz).*
+
+---
+
+#### Execution
+
+**6. PowerShell suspect**
+MITRE : [T1059.001 — PowerShell](https://attack.mitre.org/techniques/T1059/001/)  
+```kql
+DeviceProcessEvents                                                                          // lancements de processus (Defender for Endpoint)
+| where Timestamp > ago(7d)                                                                  // derniers 7 jours
+| where FileName in~ ("powershell.exe","powershell_ise.exe","pwsh.exe")                      // interpréteurs PowerShell
+| where ProcessCommandLine has_any (                                                         // mots-clés souvent malveillants
+    "DownloadString","DownloadFile","WebClient","EncodedCommand","FromBase64String","-enc")
+| project Timestamp, DeviceName, AccountName, FileName,
+    ProcessCommandLine, InitiatingProcessFileName                                            // contexte du processus
+| order by Timestamp desc                                                                    // plus récent d'abord
+```
+   > Investiguer : *Commandes encodées, téléchargements, PowerShell lancé par Office.*
+
+**7. Appli Office qui lance un shell (macro malveillante)**
+MITRE : [T1204.002 — Malicious File](https://attack.mitre.org/techniques/T1204/002/)
+```kql
+DeviceProcessEvents                                                                          // lancements de processus
+| where Timestamp > ago(7d)                                                                  // derniers 7 jours
+| where InitiatingProcessFileName in~ ("winword.exe","excel.exe","outlook.exe")              // parent = Office
+| where FileName in~ ("cmd.exe","powershell.exe","pwsh.exe","wscript.exe","cscript.exe","mshta.exe","rundll32.exe") 
+| project Timestamp, DeviceName, AccountName, InitiatingProcessFileName, FileName, ProcessCommandLine
+| order by Timestamp desc                                                                    // plus récent d'abord
+```
+   > Investiguer : *Un document Office ne devrait presque jamais lancer un shell → forte indication de macro malveillante.*
+
+**8. Fichiers exécutables/scripts récemment créés**
+MITRE : [T1105 — Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/)
+```kql
+DeviceFileEvents                                                                             // activité sur fichiers (Defender for Endpoint)
+| where Timestamp > ago(24h)                                                                 // dernières 24 heures
+| where ActionType == "FileCreated"                                                          // créations de fichiers
+| where FileName endswith ".exe"                                                             // exécutables
+    or FileName endswith ".dll"                                                              // bibliothèques
+    or FileName endswith ".ps1"                                                              // scripts PowerShell
+    or FileName endswith ".vbs"                                                              // scripts VBScript
+| project Timestamp, DeviceName, FolderPath, FileName, SHA256,
+    InitiatingProcessFileName, InitiatingProcessAccountName                                  // fichier + processus créateur
+| order by Timestamp desc                                                                    // plus récent d'abord
+```
+   > Investiguer : *Scripts dans des dossiers temporaires, exécutables créés par un processus suspect. Vérifier le SHA256 en threat intel.*
+
+
+---
+
+#### Lateral Movement
+
+**9. Connexions distantes sur plusieurs machines**
+MITRE : [T1021 — Remote Services](https://attack.mitre.org/techniques/T1021/)
+```kql
+DeviceLogonEvents                                                                            // connexions sur les appareils (Defender for Endpoint)
+| where Timestamp > ago(7d)                                                                  // derniers 7 jours
+| where ActionType == "LogonSuccess"                                                         // connexions réussies seulement
+| where LogonType in ("Network","RemoteInteractive")                                         // réseau (SMB) ou RDP
+| where isnotempty(RemoteIP)                                                                 // venant d'une IP distante
+| summarize Machines = dcount(DeviceName), Liste = make_set(DeviceName, 10), Count = count()
+    by AccountName, RemoteIP                                                                 // par compte + IP source
+| where Machines > 1                                                                         // même compte+IP qui pivote sur +1 machine = suspect
+| order by Machines desc                                                                     // les déplacements les plus étendus d'abord
+```
+   > Investiguer : *Un compte+IP qui touche plusieurs machines en peu de temps = mouvement latéral potentiel.*
+
 
 ### 5.2 Requêtes de hunting Sentinel
 
@@ -789,22 +929,23 @@ Puis ouvre **Threat intelligence > Threat analytics** et lis un rapport de bout 
 
 Sentinel > **Threat management > Hunting**. Exécute plusieurs requêtes intégrées (ou **Run all queries**), enregistre un résultat intéressant comme **bookmark** et attache-le à un incident, écris ta propre requête, et démarre un **Hunt**.
 
-### 5.3 Vues en graphe
+### 5.2 Requêtes de hunting Sentinel
 
 > **💡 ELI5**
 >
-> **Le tableau d'enquête avec de la ficelle entre les photos.** Les graphes montrent comment les utilisateurs, appareils, IP et fichiers sont reliés, pour voir ce qu'un attaquant pourrait atteindre d'autre à partir d'un compte compromis : le rayon de souffle (blast radius).
+> **Une bibliothèque de questions toutes faites.** Microsoft et la communauté ont écrit des requêtes de hunting pour des comportements d'attaquant courants. Tu les exécutes, tu épingles tout ce qui est intéressant comme signet (une preuve au tableau), et tu regroupes le travail en une chasse (hunt).
 
-Ouvre le graphe **Attack story** d'un incident et déploie les entités. Cherche les vues **hunting graph** et **blast radius**. Le graphe Sentinel nécessite le data lake (2.7) ; passe-le s'il est indisponible.
+Sentinel > **Threat management > Hunting**. Exécute plusieurs requêtes intégrées (ou **Run all queries**), enregistre un résultat intéressant comme **bookmark** et attache-le à un incident, écris ta propre requête, et démarre un **Hunt**.
 
-### 5.4 Fonctionnalités du data lake
+
+### 5.3 Fonctionnalités du data lake
 
 > **💡 ELI5**
 >
-> **Travailler dans l'archive.** Les summary rules résument de grandes tables en totaux horaires peu coûteux à garder. Les KQL jobs et les notebooks interrogent les données à long terme dans le lac, sur un horaire ou par code. Le serveur MCP permet à des outils d'IA d'interroger Sentinel pour toi.
+> **Travailler dans l'archive.** Les summary rules résument de grandes tables en totaux horaires peu coûteux à garder. Les KQL jobs et les notebooks interrogent les données à long terme dans le lake, sur un horaire ou par code. Le serveur MCP permet à des outils d'IA d'interroger Sentinel pour toi.
 
 1. **Summary rules** (n'ont pas besoin du data lake, essaie-les quand même) : Sentinel > **Configuration > Summary rules > Create**, un `summarize` sur `SecurityEvent` avec `bin(TimeGenerated, 1h)`, destination une nouvelle table `_CL`.
-2. **KQL jobs** (data lake) : Sentinel > data lake exploration, exécute une requête KQL contre le lac et planifie-la comme un job.
+2. **KQL jobs** (data lake) : Sentinel > data lake exploration, exécute une requête KQL contre le lake et planifie-la comme un job.
 3. **Notebooks :** installe l'extension **Microsoft Sentinel** pour VS Code, ouvre un notebook et interroge le lac. Lis la page **Sentinel MCP Server** de Microsoft et connecte-le une fois.
 
 ---
