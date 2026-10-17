@@ -442,7 +442,7 @@ net user labtemp1 /delete
 
 > **💡 ELI5**
 >
-> **Une watchlist est une liste sur le bloc-notes du gardien.** Ici elle dit « ces comptes sont des VIP ». La règle ne regarde que les échecs de connexion des gens sur la liste, et en sévérité High, parce qu'un échec sur le compte admin compte plus qu'un sur celui d'un stagiaire.
+> **Une watchlist est une liste sur le bloc-notes du gardien.** Dans notre déploiement, elle dit précisément "ces comptes sont des VIP". La règle ne regarde que les échecs de connexion des gens sur la liste, et en sévérité **High**, parce qu'un échec sur le compte admin compte plus qu'un sur celui d'un stagiaire.
 
 1. Enregistre sous `lab-vips.csv` (Notepad : *Save as type: All files*, pour qu'il ne soit pas enregistré en `.csv.txt`) :
 
@@ -473,23 +473,22 @@ SigninLogs                                                                      
 
 > **🔧 Leçon de ce build**
 >
-> - **Incident 32, « 4 failed sign-ins for VIP lab.admin (Tenant admin) ».** Les quatre lignes étaient des ResultType `50140`, l'invite *« Stay signed in? »* (KMSI), et chacune était suivie d'un `0` dans la même minute. Le mot de passe et la MFA étaient déjà passés : rien n'avait échoué. Contexte : une IP résidentielle, deux machines du lab (Edge 155 et 154 derrière NAT), pendant le travail sur le dossier de support. Rien dans ID Protection.
-> - **Les interruptions ne sont pas des échecs.** `ResultType != "0"` compte aussi les écrans supplémentaires qu'Entra journalise en cours de connexion : `50140` (Stay signed in?), `50125` (inscription à la réinitialisation de mot de passe), `50074`/`50076` (MFA requise). L'invite KMSI apparaît chaque fois qu'il n'y a pas de cookie persistant : InPrivate, un nouveau navigateur, une nouvelle VM, ou répondre Non. La règle se déclenchait donc sur du travail d'admin ordinaire.
+> - **Incident 32, « 4 failed sign-ins for VIP lab.admin (Tenant admin) ».** Les quatre lignes étaient des ResultType `50140` = *"Stay signed in?"*, et chacune était suivie d'un `0` dans la même minute. Le mot de passe et la MFA étaient déjà passés : rien n'avait échoué. Contexte : une IP résidentielle, 2 machines du lab (Edge 155 et 154 derrière NAT), pendant le travail sur le dossier de support. Rien dans ID Protection.
+> - **Les interruptions ne sont pas des échecs.** `ResultType != "0"` compte aussi les écrans supplémentaires qu'Entra journalise en cours de connexion : `50140` (Stay signed in?), `50125` (inscription à la réinitialisation de mot de passe), `50074`/`50076` (MFA requise). L'invite KMSI (*keep me signed in*) apparaît chaque fois qu'il n'y a pas de cookie persistant : InPrivate, un nouveau navigateur, une nouvelle VM, ou répondre Non. La règle se déclenchait donc sur du travail d'admin ordinaire.
 > - **Le correctif : optimiser la règle** (la requête ci-dessus exclut maintenant `50140` et `50125`). `50074`/`50076` restent volontairement : après un password spray, ils signifient que le mot de passe était *correct*. Les vrais échecs comme `50126` (mauvais mot de passe), `50053` (verrouillé) et `50057` (désactivé) comptent toujours. Vérifie en exécutant la requête sur 7 jours : aucune ligne `50140` ne devrait correspondre.
-> - **Corriger la règle, pas les utilisateurs.** Désactiver « Show option to remain signed in » dans Company branding ferait aussi taire l'alerte, mais ça change l'expérience utilisateur pour masquer un bogue de détection.
-> - **Classification : False positive > Incorrect alert logic**, pas Benign positive. Benign positive veut dire que l'alerte était juste et que l'activité était attendue (un test de lab). False positive veut dire que l'alerte elle-même était fausse : les 4 échecs n'ont jamais eu lieu.
-> - **Pourquoi ça compte : la fatigue d'alerte.** Une règle qui se déclenche surtout sur du bruit entraîne le SOC à la fermer sans regarder, et le vrai password spray se fait fermer de la même façon.
+> - **Classification : False positive > Incorrect alert logic**, pas Benign positive. Benign positive veut dire que l'alerte était juste et que l'activité était attendue (un test de lab). False positive veut dire que l'alerte elle-même était fausse : les 4 échecs n'ont jamais eu lieu, plutôt une mauvaise configuration.
+> - **Pourquoi c'est important : ALERT FATIGUE**. Une règle qui se déclenche surtout sur du bruit entraîne le SOC à la fermer sans regarder, et le vrai password spray se fait fermer de la même façon = danger.
 
 ### 3.3 Détection personnalisée dans Defender XDR
 
 > **💡 ELI5**
 >
-> **La même idée qu'une règle analytique, mais du côté de Defender.** Les tables propres à Defender (processus, fichiers et connexions de chaque appareil) restent dans Defender, donc une règle qui les lit se construit depuis Advanced hunting. Le bonus : quand elle se déclenche, elle peut agir sur l'appareil tout de suite, comme collecter un paquet d'investigation.
+> **La même idée qu'une Analytic Rule, mais du côté de Defender.** Les tables propres à Defender (processus, fichiers et connexions de chaque appareil) restent dans Defender, donc une règle qui les lit se construit depuis Advanced hunting. Le bonus : quand elle se déclenche, elle peut agir sur l'appareil tout de suite, comme collecter un paquet d'investigation.
 
 Les tables Defender comme `DeviceProcessEvents` ne sont pas dans le workspace Sentinel (2.5), donc cette détection est une **custom detection** Defender XDR, construite depuis Advanced hunting.
 
-1. **Génère des données :** sur `CLOUD-W11` exécute `powershell -enc VwByAGkAdABlAC0ASABvAHMAdAAgACIAbABhAGIAIgA=`. Ça se décode en `Write-Host "lab"` et affiche simplement *lab*. Attends 5-10 minutes.
-2. **Hunting > Advanced hunting**, plage de temps 24 heures. Finalise la requête *ici* : le panneau de requête de l'assistant de règle est en lecture seule.
+1. **Génère des données :** sur `CLOUD-W11` exécute `powershell -enc VwByAGkAdABlAC0ASABvAHMAdAAgACIAbABhAGIAIgA=`. Ça se décode en `Write-Host "lab"` et print simplement *lab*. Attends 5-10 minutes.
+2. **Hunting > Advanced hunting**, plage de temps 24 heures.
 
 ```kql
 DeviceProcessEvents                                                                                                  // Defender process launches
@@ -499,18 +498,18 @@ DeviceProcessEvents                                                             
 ```
 
 3. Avec un résultat affiché, clique **Create detection rule** :
-   - **General :** `CD - ENCODED POWERSHELL`, fréquence **Every hour**, sévérité Medium, catégorie Execution, technique **T1059.001**. Lier un rapport de threat analytics est optionnel ; aucun ne convient à une technique générique.
+   - **General :** `CD - ENCODED POWERSHELL`, fréquence **Every hour**, sévérité Medium, catégorie Execution, technique **T1059.001**. Lier un rapport de threat analytics est optionnel ; dans notre cas, aucun ne convient à une technique générique.
    - **Alert settings :** titre `Encoded PowerShell on {{DeviceName}}`. Description (requise) : `Command: {{ProcessCommandLine}}` plus tes lignes QUOI/POURQUOI/TRIAGE.
    - **Impacted assets :** Device = `DeviceId`, User (Sid) = `AccountSid`. **Related evidence :** un Process, CommandLine = `ProcessCommandLine`.
    - **Custom details :** `ProcessId`, `ProcessCreationTime` (ils identifient précisément cette exécution de processus dans la timeline de l'appareil).
    - **Automated actions :** seulement **Collect investigation package**. L'isolation se fait délibérément en 4.4, pas à chaque test PowerShell. **Scope :** groupe d'appareils `Lab-Win`.
 4. Submit. Gère-la sous **Hunting > Custom detection rules** (statut de dernière exécution, alertes déclenchées, modifier, exécuter, désactiver).
 
-### 3.3b Threat intelligence, UEBA, anomalies, Fusion, MITRE ATT&CK
+### 3.3b Threat intelligence, UEBA, anomalies, MITRE ATT&CK
 
 > **💡 ELI5**
 >
-> **Des règles que tu n'as pas à écrire.** La threat intelligence compare tes journaux à des IP et domaines connus comme malveillants. L'UEBA apprend ce qui est normal pour chaque utilisateur et signale ce qui ne l'est pas. Les règles d'anomalie et de ML font pareil pour des motifs comme des connexions RDP inhabituelles. Fusion assemble de petites alertes en une plus grande histoire. MITRE ATT&CK est la carte qui montre quelles techniques d'attaque tu couvres.
+> **Des règles que tu n'as pas à écrire.** La threat intelligence (TI) compare tes journaux à des IP et domaines **CONNUS** comme malveillants. L'UEBA apprend ce qui est normal pour chaque utilisateur (typique) et signale ce qui ne l'est pas (atypique). Les règles d'anomalie et de ML font pareil pour des motifs comme des connexions RDP inhabituelles. MITRE ATT&CK est le framework qui montre quelles techniques d'attaque tu couvres.
 
 **Corresponds à ton propre indicateur.** Les règles analytiques n'interrogent que le workspace, donc le modèle *TI map* doit utiliser une table que tu ingères vraiment.
 
@@ -519,19 +518,16 @@ DeviceProcessEvents                                                             
 3. `203.0.113.10` n'apparaît jamais dans les connexions, alors ajoute un second indicateur pour ton **IP publique résidentielle** (`SigninLogs | top 1 by TimeGenerated | project IPAddress`), description *Lab test: home IP*, **valide jusqu'à demain**. Les indicateurs restent privés à ton workspace : ils ne sont pas partagés avec Microsoft ni d'autres tenants et ne bloquent rien.
 4. **Test now :** connecte-toi à office.com comme `soc.target1`. Les modèles TI s'exécutent moins souvent ; laisse une heure ou deux.
 5. Crée aussi la règle **Microsoft Defender Threat Intelligence Analytics** (filtre Rule type = Threat Intelligence). Elle correspond au flux de Microsoft, pas au tien ; n'attends aucune alerte.
-6. **Indicateurs Defender for Endpoint** (à lire seulement) : Settings > Endpoints > **Indicators**. Onglets pour les hachages de fichiers, les IP, les URL/domaines et les certificats ; actions allow, audit, warn, block. L'application IP/URL nécessite aussi *Custom network indicators* et la protection réseau.
 
 **UEBA :**
 
 1. Portail Defender > **System > Settings > Microsoft Sentinel** > `law-soc` > **Entity behavior analytics**.
 2. Active-le avec **Microsoft Entra ID** comme source d'annuaire. Choisis les sources de données **manuellement** (plutôt que *Connect available data sources*) pour savoir sur quoi il établit ses lignes de base : SigninLogs, AuditLogs, SecurityEvent, AzureActivity, DeviceLogonEvents. Save.
-3. Les lignes de base prennent environ une journée. Ensuite vérifie `IdentityInfo | take 10` et `BehaviorAnalytics | take 10`.
+3. Les lignes de base prennent environ quelques journées. Ensuite vérifie `IdentityInfo | take 10` et `BehaviorAnalytics | take 10`.
 
 **Anomalies :** Analytics > onglet **Anomalies**. Ouvres-en une (ici : *UEBA Anomalous Sign In*) et lis ses sources de données, tactiques et paramètres (p. ex. *Anomaly score threshold: 0.5*). **Duplique**-la : la copie est nommée *…Customized*, marquée **FLGT**, s'exécute en **Flighting** à côté de l'original en **Production**, et ses seuils sont modifiables. **Change un seuil** (p. ex. 0.4), sinon il n'y a rien à comparer. Basculer une version en Production fait passer l'autre en Flighting. Les résultats vont dans la table `Anomalies` de `law-soc`, jamais en alertes ; elle reste vide (ou n'existe pas encore) jusqu'à la première anomalie.
 
 **ML Behavior Analytics** (des règles de machine learning qui, elles, alertent) : Rule templates > Rule type **ML Behavior Analytics** > **Anomalous RDP Login Detection** > Create. Elle convient à `CLOUD-WINDOWS` et nécessite environ une semaine d'historique RDP.
-
-**Fusion :** cherche *Advanced Multistage* dans Active rules et templates. Avec le workspace dans le portail Defender, la corrélation Defender XDR remplace Fusion, donc c'est désactivé ou indisponible. Laisse ça.
 
 **MITRE ATT&CK :** Threat management > **MITRE ATT&CK**. Dans la vue par défaut, trouve tes techniques (T1110, T1136) et clique dessus pour voir les règles. Bascule en **Simulated** pour inclure les modèles et requêtes de hunting que tu n'as pas activés, puis fais une analyse d'écart : une technique vide en Active mais couverte en Simulated, filtrée aux sources de données que tu as réellement.
 
@@ -539,30 +535,31 @@ DeviceProcessEvents                                                             
 
 > **💡 ELI5**
 >
-> **Les règles d'automatisation sont le répartiteur ; les playbooks sont les robots.** Une règle d'automatisation agit au moment où un incident est créé : l'assigner, l'étiqueter, ajouter des tâches, ou envoyer un robot. Un playbook (une Logic App) est un robot pour les tâches plus longues, comme écrire un commentaire ou bloquer un utilisateur. Chaque robot a besoin de son propre badge (une identité managée) pour toucher l'incident.
+> **Les règles d'automatisation sont le répartiteur ; les playbooks sont les robots.** Une règle d'automatisation agit au moment où un incident est créé : l'assigner, l'étiqueter, ajouter des tâches, ou envoyer un robot. Un playbook (une **Logic App**) est un robot pour les tâches plus longues, comme écrire un commentaire ou bloquer un utilisateur. Chaque robot a besoin de son propre badge (une **managed identity**) pour toucher l'incident.
 
-**Trois identités, trois permissions.** Une personne construit l'automatisation (rôles de 1.6). **Le compte de service de Sentinel** exécute le playbook quand une règle se déclenche (nécessite *Microsoft Sentinel Automation Contributor*). **L'identité managée du playbook** réécrit dans l'incident (nécessite *Microsoft Sentinel Responder*). Manquer l'une des deux dernières fait qu'un playbook ne fait silencieusement rien.
+**3 identités, 3 permissions.** Une personne construit l'automatisation (rôles de 1.6). **Le compte de service de Sentinel** exécute le playbook quand une règle se déclenche (nécessite *Microsoft Sentinel Automation Contributor*). **La managed identity du playbook** réécrit dans l'incident (nécessite *Microsoft Sentinel Responder*). 
+> Manquer l'une des deux dernières (contributor & responder) fait qu'un playbook ne fait silencieusement rien.
 
 1. **Crée le playbook :** Sentinel > **Configuration > Automation > Playbooks** > **Create > Logic App playbook > Playbook with incident trigger (Legacy)**. Nom `PB-INCIDENT-COMMENT`, groupe de ressources `RG-SOC-LAB`, même région. Sur **Connections**, garde *Connect with managed identity*. Create. Puis vérifie que Logic App > **Identity > System assigned** est **On**.
-2. **Designer :** sous le trigger *Microsoft Sentinel incident*, ajoute **Microsoft Sentinel > Add comment to incident (V3)**. Incident ARM ID : contenu dynamique *Incident ARM ID*. Commentaire : `Auto-triaged by PB-INCIDENT-COMMENT. Severity:` + dynamique *Severity*. La connexion de l'action doit utiliser l'**identité managée** : si elle te demande de te connecter, choisis *Change connection > Add new > Managed identity*. Save.
+2. **Designer :** sous le trigger *Microsoft Sentinel incident*, ajoute **Microsoft Sentinel > Add comment to incident (V3)**. Incident ARM ID : contenu dynamique *Incident ARM ID*. Commentaire : `Auto-triaged by PB-INCIDENT-COMMENT. Severity:` + dynamique *Severity*. La connexion de l'action doit utiliser la managed identity : si elle te demande de te connecter, choisis *Change connection > Add new > Managed identity*. Save.
 3. **Identité du playbook → Sentinel Responder :** `RG-SOC-LAB` > **Access control (IAM) > Add role assignment** > **Microsoft Sentinel Responder** > assigne à **User, group, or service principal** > cherche `PB-INCIDENT-COMMENT` (ou son Object ID depuis la page Identity). Confirme qu'il est listé sous le rôle.
 4. **Compte de service Sentinel → Automation Contributor :** portail Defender > **System > Settings > Microsoft Sentinel** > `law-soc` > **Playbook permissions > Configure permissions** > coche `RG-SOC-LAB` > Apply. (Équivalent : IAM > *Microsoft Sentinel Automation Contributor* au service principal **Azure Security Insights**.)
 5. **Règle d'automatisation 1 :** Automation > Automation rules > **Create** : `AR - FAILED LOGONS`, trigger *When incident is created*, condition **Analytic rule name** contains `SR - MULTIPLE FAILED LOGONS`, actions **Add tags** `lab`, `brute-force` puis **Run Logic App playbook** `PB-INCIDENT-COMMENT`, ordre 1.
 6. **Règle d'automatisation 2** (actions intégrées seulement) : `AR - NEW USER ASSIGN`, when incident is created, analytic rule name contains `NRT - USER ACC CREATED`, actions **Assign owner** `soc.analyst`, **Change status** Active, **Add tags** `persistence`, ordre 2.
 7. **Règle d'automatisation 3** (tâches) : `AR - VIP ESCALATE`, when incident is created, analytic rule name contains `SR - VIP SIGN-IN FAILURES`, actions **Assign owner** `soc.analyst`, **Add tags** `VIP`, `ID`, **Add task** *Check for a successful sign-in (ResultType 0) after the failures*, **Add task** *Check Identity Protection for this user's risk*, **Run playbook** `PB-INCIDENT-COMMENT`, ordre 3. Les règles d'automatisation n'agissent que sur les *nouveaux* incidents, donc teste avec une nouvelle rafale de mauvais mots de passe.
 
-**Test now :** répète la rafale RDP de 3.1 et le test `net user` de 3.2 (`labtemp2`). Les incidents de force brute devraient recevoir les étiquettes et le commentaire ; l'incident de nouveau compte devrait recevoir l'owner `soc.analyst`, le statut *In progress* et l'étiquette. Si le commentaire manque : Logic App > **Overview > Run history**. Aucune exécution = étape 4 ou la condition de la règle ; une exécution échouée = ouvre-la, clique sur l'étape rouge (403 = étape 3). Exécute aussi le playbook **à la main** : incident > **…** > **Run playbook**.
+**Test now :** répète la rafale RDP de 3.1 et le test `net user` de 3.2 (`labtemp2`). Les incidents de brute force devraient recevoir les tags et le commentaire ; l'incident de nouveau compte devrait recevoir l'owner `soc.analyst`, le statut *In progress* et le tag. Si le commentaire manque : Logic App > **Overview > Run history**. Aucune exécution = étape 4 ou la condition de la règle ; une exécution échouée = ouvre-la, clique sur l'étape rouge (403 = étape 3). Exécute aussi le playbook **à la main** : incident > **…** > **Run playbook**.
 
-### 3.5 Classeurs (workbooks) et SOC optimization
+### 3.5 Classifiers (workbooks) et SOC optimization
 
 > **💡 ELI5**
 >
-> **Les classeurs sont le tableau de bord sur le mur.** Des graphiques et des tableaux bâtis à partir de requêtes, pour repérer les tendances d'un coup d'œil au lieu de lancer des recherches. SOC optimization est l'entraîneur : il regarde tes données et tes règles et pointe ce qui manque, ou ce que tu paies sans l'utiliser.
+> **Les classifiers sont le tableau de bord sur le mur.** Des graphiques et des tableaux bâtis à partir de requêtes, pour repérer les tendances d'un coup d'œil au lieu de lancer des recherches. SOC optimization est l'entraîneur : il regarde tes données et tes règles et pointe ce qui manque, ou ce que tu paies sans l'utiliser/dans le vide.
 
 1. **Modèle :** Sentinel > **Threat management > Workbooks > Templates** > **Azure Activity** > **Save** (`RG-SOC-LAB`) > **View saved workbook**.
 2. **Construis le tien :** Workbooks > **Add workbook > Edit**.
    - **+ Add > Add parameters** : `TimeRange`, type *Time range picker*, requis, **default value Last 24 hours**. Sans valeur par défaut, la pastille affiche *TimeRange: <unset>* et les requêtes qui l'utilisent ne s'exécutent pas.
-   - Clique **Done Editing** sur le bloc de paramètre, puis **+ Add > Add data source + visualization** (ancien nom : *Add query*). Source de données *Logs*, type de ressource *Log Analytics*, workspace `law-soc`, plage de temps **TimeRange**. Visualisation *Bar chart* (plus lisible qu'un time chart, qui trace des lignes droites sur les heures vides comme si elles avaient des données) :
+   - Clique **Done Editing** sur le bloc de paramètre, puis **+ Add > Add data source + visualization** (ancien nom : *Add query*). Source de données *Logs*, type de ressource *Log Analytics*, workspace `law-soc`, plage de temps **TimeRange**. Visualisation *Bar chart* :
 
 ```kql
 SecurityEvent                                            // Windows security events
@@ -590,13 +587,13 @@ SigninLogs                                           // Entra ID sign-ins
 
 > **💡 ELI5**
 >
-> **L'appel avant l'exercice.** Chaque détection que tu as construite est listée avec ce qui la déclenche et l'automatisation qui suit. Vérifier qu'elles sont toutes activées avant la phase 4 fait qu'une alerte manquante plus tard te dit quelque chose, au lieu de « j'ai oublié de l'activer ».
+> **L'appel avant l'exercice.** Chaque détection que tu as construite est listée avec ce qui la déclenche et l'automatisation qui suit.
 
 | Détection | Type | Déclencheur | Automatisation |
 | --- | --- | --- | --- |
-| `SR - MULTIPLE FAILED LOGONS` | Planifiée | 6+ mauvais mots de passe RDP sur `CLOUD-WINDOWS` | `AR - FAILED LOGONS` : étiquettes + `PB-INCIDENT-COMMENT` |
-| `NRT - USER ACC CREATED` | NRT | `net user … /add` | `AR - NEW USER ASSIGN` : owner, statut, étiquette |
-| `SR - VIP SIGN-IN FAILURES` | Planifiée + watchlist | 3+ mauvais mots de passe pour `soc.target1` | `AR - VIP ESCALATE` : owner, étiquettes, 2 tâches, playbook |
+| `SR - MULTIPLE FAILED LOGONS` | Planifiée | 6+ mauvais mots de passe RDP sur `CLOUD-WINDOWS` | `AR - FAILED LOGONS` : tags + `PB-INCIDENT-COMMENT` |
+| `NRT - USER ACC CREATED` | NRT | `net user … /add` | `AR - NEW USER ASSIGN` : owner, statut, tag |
+| `SR - VIP SIGN-IN FAILURES` | Planifiée + watchlist | 3+ mauvais mots de passe pour `soc.target1` | `AR - VIP ESCALATE` : owner, tags, 2 tâches, playbook |
 | `CD - ENCODED POWERSHELL` | Détection custom | `powershell -enc …` sur `CLOUD-W11` | Collecte du paquet d'investigation |
 | TI map IP entity to SigninLogs | Modèle | Connexion depuis ton IP résidentielle (indicateur de test) | aucune |
 | Anomalous RDP Login Detection | ML behavior analytics | Connexion RDP inhabituelle, après environ une semaine de base | aucune |
@@ -605,17 +602,17 @@ Laisse les incidents ouverts : ils sont la matière première de 4.4.
 
 ---
 
-## Phase 4 : Générer de l'activité et investiguer
+## Phase 4 : Générer de l'activité et l'investiguer
 
-Exécute tout dans les VM du lab uniquement. La phase 3 a déjà produit des incidents ; cette phase ajoute de l'activité endpoint, identité et courriel, puis les traite comme un analyste.
+Exécute tout dans les VM du lab uniquement. La phase 3 a déjà produit des incidents ; cette phase ajoute de l'activité, puis la traite comme un analyste.
 
 ### 4.1 Activité endpoint
 
 > **💡 ELI5**
 >
-> **Un exercice d'incendie sur le mannequin d'entraînement.** EICAR est un faux virus que tous les antivirus acceptent de traiter comme réel, donc tu obtiens une alerte complète sans aucun risque. Les commandes ordinaires (`whoami`, `net user`) sont ce qu'un intrus exécute d'abord pour regarder autour ; tu les retrouveras dans les journaux ensuite.
+> **Un exercice d'incendie sur le mannequin d'entraînement.** EICAR est un faux virus que tous les antivirus acceptent de traiter comme réel, donc tu obtiens une alerte complète sans aucun risque. Les commandes ordinaires (`whoami`, `net user`) sont ce qu'un intrus exécute d'abord pour regarder autour ; tu les retrouveras dans les logs ensuite.
 
-1. Sur `CLOUD-W11`, télécharge le **fichier de test EICAR** depuis eicar.org. Il est inoffensif par conception ; Defender Antivirus le bloque et lève une alerte.
+1. Sur `CLOUD-W11`, télécharge le **fichier de test EICAR** depuis eicar.org. Il est inoffensif par conception ; Defender Antivirus le bloque et lève une alerte - c'est normal/expected.
 2. Exécute des commandes ordinaires qui créent de la télémétrie mais généralement pas d'alertes : `whoami /all`, `net user`, `ipconfig /all`, `notepad.exe`, `calc.exe`. Relance la commande encodée de 3.3 si tu veux une autre alerte.
 3. Optionnel : Atomic Red Team sur cette VM seulement, une technique à la fois.
 4. Retrouve ton activité (Advanced hunting) :
@@ -634,43 +631,48 @@ Puis ouvre la page de l'appareil `CLOUD-W11` > **Timeline** et retrouve les mêm
 
 > **💡 ELI5**
 >
-> **Tester la réception.** Les mauvais mots de passe montrent à quoi ressemblent les échecs dans le journal de connexion. Se connecter via Tor ressemble à quelqu'un qui cache d'où il vient, ce qui fait que l'expert en fraude d'Entra (ID Protection) marque l'utilisateur comme risqué. Ensuite tu pratiques les réponses : confirmer, rejeter, réinitialiser, révoquer.
+> **Tester la réception.** Les mauvais mots de passe montrent à quoi ressemblent les échecs dans les logs de connexion. Se connecter via Tor ressemble à quelqu'un qui cache d'où il vient, ce qui fait que l'expert en fraude d'Entra (ID Protection) marque l'utilisateur comme risqué. Ensuite tu pratiques les réponses : confirmer, rejeter, réinitialiser, révoquer.
 
 1. office.com comme `soc.target1` : 8 mauvais mots de passe, puis le bon (déclenche aussi `SR - VIP SIGN-IN FAILURES`).
 2. Entra > **Monitoring & health > Sign-in logs** : trouve les échecs et note leurs codes d'erreur.
-3. **Crée une vraie détection de risque :** les mauvais mots de passe seuls ne rendent pas un utilisateur risqué. À l'intérieur de `CLOUD-W11` (jamais ton propre PC), installe **Tor Browser** et connecte-toi à office.com comme `soc.target1`. Ça lève une détection de risque de connexion **Anonymous IP address** en quelques minutes.
+3. **Crée une vraie détection de risque :** les mauvais mots de passe seuls ne rendent pas un utilisateur risqué. À l'intérieur de `CLOUD-W11`, installe **Tor Browser** et connecte-toi à office.com comme `soc.target1`. Ça lève une détection de risque de connexion **Anonymous IP address** en quelques minutes.
 4. Entra > **Protection > Identity Protection** : *Risk detections*, *Risky sign-ins* et *Risky users*. Puis pratique les actions sur `soc.target1` : confirm compromised (le risque devient High), dismiss risk, reset password, revoke sessions. Cherche aussi l'alerte correspondante dans le portail Defender : les alertes Identity Protection alimentent les incidents Defender XDR.
 
 ### 4.3 Courriel : simulation d'hameçonnage
 
 > **💡 ELI5**
 >
-> **Un faux courriel d'hameçonnage, envoyé exprès.** Attack simulation training envoie un piège réaliste à un utilisateur de test et enregistre qui clique. Ensuite tu suis ce courriel comme un analyste : le trouver dans Explorer, voir qui l'a reçu, et ce que tu pourrais en faire (le déplacer, le supprimer).
+> **Un faux courriel d'hameçonnage, envoyé via le Attack Simulation Training** - piège réaliste à un utilisateur de test et enregistre qui clique. Ensuite, tu suis ce courriel comme un analyste.
 
-1. **Construis un payload** (optionnel mais instructif) : Attack simulation training > **Content library > Payloads > Tenant payloads > Create a payload**. Email, technique *Credential Harvest*. La **technique doit être Credential Harvest**, sinon la section *Phishing link* n'apparaît jamais et tu ne vois que des payloads How-to Guide. Donne un expéditeur/marque/objet crédibles qui racontent *une seule* histoire cohérente, ajoute le lien via **Phishing link > Select URL** (domaines de simulation appartenant à Microsoft, p. ex. `passwordle.it`), et attache-le à ton texte de bouton. Ajoute des **indicators** (usurpation de domaine sur l'adresse From, URL hyperlinking sur le lien) pour que le moment pédagogique mette en évidence les indices.
+![Courriel de phishing impersonating DocuSign](images/creds-harvest-email.png)
+
+1. **Construis un payload** : Attack simulation training > **Content library > Payloads > Tenant payloads > Create a payload**. Email, technique *Credential Harvest*. Donne un expéditeur/marque/objet crédibles (j'ai personnellement choisi DocuSign) qui racontent *une seule* histoire cohérente, ajoute le lien via **Phishing link > Select URL** (domaines de simulation appartenant à Microsoft, p. ex. `passwordle.it`), et attache-le à ton texte de bouton. Ajoute des **indicators** (usurpation de domaine sur l'adresse From, URL hyperlinking sur le lien).
 2. **Lance :** Simulations > **Launch a simulation**, technique Credential Harvest, choisis ton payload (onglet Tenant payloads), page de connexion par défaut, cible `soc.target1` seulement, pas de formation, ne pas livrer de notifications, lancer maintenant, fin dans 2 jours.
 3. **En tant que soc.target1** (outlook.office.com) : ouvre le courriel, clique le lien, entre un *faux* mot de passe. Puis clique **Report > phishing** pour exercer la boucle de signalement. Note les heures.
 4. **Lis le résultat** dans **Attack simulation training > [ta sim] > Users** : la timeline par utilisateur (delivered → read → clicked → supplied credentials), et **Compromised = Yes**.
-5. **Vois le signalement** dans **Actions & submissions > Submissions > User reported** : Defender l'étiquette automatiquement *Phish simulation = Yes* et le compte sous *Simulations*, pas Threats. Action correcte : aucune — ne le soumets pas à Microsoft, ne le marque pas. *Mark as and notify* est pour les vrais signalements (définir un verdict, Defender avise le rapporteur).
+5. **Vois le signalement** dans **Actions & submissions > Submissions > User reported** : Defender l'étiquette automatiquement *Phish simulation = Yes* et le compte sous *Simulations*, pas Threats. Action correcte : aucune — ne le soumets pas à Microsoft, ne le marque pas. *Mark as and notify* est pour les vrais signalements (définir un verdict, Defender avise le rapporteur - du bruit pas nécessaire dans notre cas).
 6. **Analyse d'un vrai courriel** (pour de vrais SPF/DKIM/DMARC) : envoie à `soc.target1` un courriel simple depuis un compte *externe*, puis ouvre-le dans Explorer → **email entity page** et lis l'expéditeur (From vs MailFrom), **SPF / DKIM / DMARC / Composite auth**, l'IP de connexion, et l'URL. Un vrai courriel externe passe les trois — c'est ta référence pour savoir à quoi ressemble un *échec* sur un hameçonnage usurpé. Options de remédiation sur la page d'entité : move to junk, soft delete, hard delete (elles passent par l'Action center).
+
+
 
 > **🔧 Leçon de ce build**
 >
-> - **Le courriel de simulation est injecté directement dans la boîte**, donc il ne traverse jamais le pipeline de transport. Il est par conséquent *absent* du message trace Exchange, de Threat Explorer et des tables de hunting `EmailEvents`/`UrlClickEvents`. **Le rapport de simulation (onglet Users) est la seule source.** Ne cherche pas une simulation dans les outils de flux de messagerie — courir après un trace/Explorer vide a fait perdre du temps ici.
+> - **Le courriel de simulation est injecté directement dans la boîte**, donc il ne traverse jamais le pipeline de transport. Il est par conséquent *absent* du Message Trace Exchange, de Threat Explorer et des tables de hunting `EmailEvents`/`UrlClickEvents`. **Le rapport de simulation (onglet Users) est la seule source.**
 > - **La compromission complète est rapide.** soc.target1 : delivered → read + clicked (même minute, ~3,5 min après la remise) → supplied credentials **26 secondes plus tard**. Sur un leurre convaincant, la détection et la réponse comptent plus qu'espérer que personne ne clique.
-> - **Explorer filtre en UTC alors que le sélecteur de date affiche les dates locales.** Un événement à 20 h 3x HAE est `00:3x` UTC le *lendemain*, donc il tombait hors d'une fenêtre qui finissait « aujourd'hui » en local — et le sélecteur ne te laisse pas choisir la date UTC de demain. Même piège local-vs-UTC que l'incident 32.
 > - **La boucle bouton Report → Submissions fonctionne.** Cliquer *Report* crée un artefact intra-org injecté (Sender IP `0.0.0.0`, pas de SPF/DKIM/DMARC, URL `userSubmissionsReportMessage`) et atterrit dans **Submissions > User reported**. Defender reconnaît automatiquement une simulation et la classe sous *Simulations*, séparée des vraies menaces, pour que les analystes ne trient pas leurs propres campagnes.
-> - **Le DNS entrant d'un tenant tout neuf prend du temps.** Un courriel externe depuis Proton a rebondi : *« onboarding.mail.protection.outlook.com type=A: Host not found »*. Le MX existait mais l'hôte de messagerie n'était pas encore résolvable publiquement. L'injection interne (simulations) fonctionnait pendant que l'entrant externe non — le routage du courrier entrant est la dernière pièce à s'allumer après le provisionnement d'Exchange. Réessaie plus tard ou depuis un autre expéditeur.
-> - **L'attribution de formation est séparée de la simulation.** Laisser la formation sur « default » (pas « none ») a assigné automatiquement des cours BEC et Ransomware à l'utilisateur. « Default » n'est pas « aucune formation ».
 
 ### 4.4 Investiguer un incident (à répéter pour chacun)
 
 > **💡 ELI5**
 >
-> **Du travail de détective, consigné par écrit.** Un incident est le dossier d'enquête. Tu le lis (ce qui s'est déclenché, sur qui), tu confrontes les faits aux journaux bruts, tu décides ce qui s'est vraiment passé, et tu le rédiges pour que l'analyste suivant n'ait pas à refaire ton travail. Puis tu le classes : une vraie attaque, de l'activité attendue, ou une règle qui s'est trompée.
+> **Du travail de détective, consigné par écrit.** Un incident est le dossier d'enquête. Tu le lis (ce qui s'est déclenché, sur qui), tu confrontes les faits aux logs bruts, tu décides ce qui s'est vraiment passé, et tu le rédiges pour que l'analyste suivant n'ait pas à refaire ton travail. Puis tu le classes : une vraie attaque, de l'activité attendue, ou une règle qui s'est trompée.  
+   > - True Positive = vraie attaque  
+   > - Benign Positive = activité attendue/autorisée (EICAR)  
+   > - False Positive = règle qui s'est trompée (`50140` comptés comme échecs - mauvaise logique d'alerte)  
 
-1. **Incidents & alerts > Incidents** (enlève le filtre de priorité). Ouvre un incident et parcours **Attack story** (graphe et entités), **Alerts**, **Assets**, **Investigations**, **Evidence and Response** et **Activities**.
-2. **Gestion de cas :** assigne-toi, définis le statut, ajoute des étiquettes et un commentaire, ajoute une tâche, classe-le (tests de lab : *Benign positive > Security testing* ; une règle qui a compté la mauvaise chose : *False positive > Incorrect alert logic*, voir 3.2b), résous-le.
+
+1. **Incidents & alerts > Incidents**. Ouvre un incident et parcours **Attack story** (graphe et entités), **Alerts**, **Assets**, **Investigations**, **Evidence and Response** et **Activities**.
+2. **Gestion de cas :** assigne-toi, définis le statut, ajoute des tags et un commentaire, ajoute une tâche, classe-le (tests de lab : *Benign positive > Security testing* ; une règle qui a compté la mauvaise chose : *False positive > Incorrect alert logic*, voir 3.2b), résous-le.
 3. **Écris chaque commentaire avec le même gabarit** (heures en UTC, faits avant conclusions, et ce qui n'a *pas* été trouvé) :
 
    ```
@@ -696,30 +698,26 @@ Puis ouvre la page de l'appareil `CLOUD-W11` > **Timeline** et retrouve les mêm
    NEXT / HANDOVER
    <open items, who owns them, or "none, resolved">
    ```
-4. **Entités :** clique le compte, l'IP et l'hôte pour ouvrir leurs pages. Depuis l'incident de force brute, demande : y a-t-il eu un 4624 réussi depuis la même IP ensuite ?
+  
+   ![Exemple commentaire d'incident](images/incident-comment.png)   
+   
+4. **Entités :** clique le compte, l'IP et l'hôte pour ouvrir leurs pages. Depuis l'incident de force brute, demande : y a-t-il eu un 4624 (successful logon) réussi depuis la même IP ensuite ?
 5. **Incident PowerShell encodé :** décode la commande (3.3), trouve le processus dans la timeline de l'appareil grâce aux custom details `ProcessId` et `ProcessCreationTime`, et télécharge le paquet d'investigation depuis l'**Action center**.
 6. **Actions sur appareil** sur `CLOUD-W11` : **Run antivirus scan**, **Initiate live response session** (`dir`, `processes`, `connections`, `getfile <path>`), puis **Isolate device** et, une fois l'effet constaté, **Release from isolation**.
-7. **Action center > Pending / History :** retrouve tes actions, les paquets collectés, et toute investigation automatisée ou attack disruption.
+7. **Action center > Pending/History :** retrouve tes actions, les paquets collectés, et toute investigation automatisée ou attack disruption.
 
 ### 4.5 Activité Microsoft 365
 
 > **💡 ELI5**
 >
-> **La trace écrite de tout ce que les utilisateurs font dans Microsoft 365.** L'audit répond à « qui a ouvert, envoyé, partagé ou supprimé quoi ». Content search trouve un message à travers les boîtes. Les journaux d'activité Graph enregistrent quelles applications et scripts ont appelé Microsoft Graph, l'API derrière la majeure partie de Microsoft 365.
+> **La trace écrite de tout ce que les utilisateurs font dans Microsoft 365.** L'audit répond à "qui a ouvert, envoyé, partagé ou supprimé quoi". Content search trouve un message à travers les boîtes. Les journaux d'activité Graph enregistrent quelles applications et scripts ont appelé **Microsoft Graph**, l'API derrière la majeure partie de Microsoft 365.
 
 1. Purview > **Audit > New search** : utilisateur `soc.target1`, dernières 24 heures.
 2. Purview > **eDiscovery > Content search** : cherche dans la boîte de `soc.target1` un mot-clé du courriel de simulation.
 3. **Journaux d'activité Graph :** Entra > **Monitoring & health > Diagnostic settings > Add**, catégorie `MicrosoftGraphActivityLogs`, envoie à `law-soc`. Plus tard : `MicrosoftGraphActivityLogs | take 10`.
 
-### 4.6 Security Copilot (si ton tenant l'offre)
 
-> **💡 ELI5**
->
-> **Un assistant qui lit le dossier d'enquête avec toi.** Security Copilot résume un incident en langage clair, suggère les prochaines étapes et explique des scripts comme le PowerShell encodé. Il t'accélère ; il ne remplace pas la vérification des faits.
-
-Dans un incident, utilise le panneau Copilot pour le résumer, obtenir des réponses guidées, et analyser la commande PowerShell encodée.
-
-### 4.7 Tester chaque rôle
+### 4.6 Tester chaque rôle
 
 > **💡 ELI5**
 >
