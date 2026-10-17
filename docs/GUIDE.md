@@ -921,21 +921,26 @@ DeviceLogonEvents                                                               
    > Investiguer : *Un compte+IP qui touche plusieurs machines en peu de temps = mouvement latéral potentiel.*
 
 
-### 5.2 Requêtes de hunting Sentinel
+
+### 5.2 Hunts dans Sentinel
 
 > **💡 ELI5**
 >
-> **Une bibliothèque de questions toutes faites.** Microsoft et la communauté ont écrit des requêtes de hunting pour des comportements d'attaquant courants. Tu les exécutes, tu épingles tout ce qui est intéressant comme signet (une preuve au tableau), et tu regroupes le travail en une chasse (hunt).
+> **Une enquête structurée autour d'une idée.** Une alerte te dit "regarde ici". Une hunt, c'est l'inverse : tu pars d'une **HYPOTHÈSE**, tu lances des requêtes pour la vérifier, tu épingles les preuves comme **Bookmarks**, puis tu notes si l'hypothèse est confirmée ou non. C'est **proactif**, pas réactif.
 
-Sentinel > **Threat management > Hunting**. Exécute plusieurs requêtes intégrées (ou **Run all queries**), enregistre un résultat intéressant comme **bookmark** et attache-le à un incident, écris ta propre requête, et démarre un **Hunt**.
+Sentinel > **Threat management > Hunting**. 3 onglets :
 
-### 5.2 Requêtes de hunting Sentinel
+- **Queries** — la bibliothèque de requêtes de hunting (Microsoft + communauté), classées par tactique MITRE. Point de départ pour s'inspirer.
+- **Hunts (Preview)** — les hunts structurées (hypothèse → preuves → résultat).
+- **Bookmarks** — toutes les preuves épinglées, réutilisables dans un incident.
 
-> **💡 ELI5**
->
-> **Une bibliothèque de questions toutes faites.** Microsoft et la communauté ont écrit des requêtes de hunting pour des comportements d'attaquant courants. Tu les exécutes, tu épingles tout ce qui est intéressant comme signet (une preuve au tableau), et tu regroupes le travail en une chasse (hunt).
+**Le cycle d'une chasse (onglet Hunts) :**
 
-Sentinel > **Threat management > Hunting**. Exécute plusieurs requêtes intégrées (ou **Run all queries**), enregistre un résultat intéressant comme **bookmark** et attache-le à un incident, écris ta propre requête, et démarre un **Hunt**.
+1. **Définir une hypothèse.** *New hunt* → donne-lui un titre, une description et des **tactiques/techniques MITRE** ciblées. Inspire-toi de la carte MITRE, des résultats de requêtes récents ou du contenu du hub.
+2. **Investiguer et bookmarker.** Attache des requêtes à la chasse, exécute-les dans l'expérience *Logs*, et épingle chaque résultat intéressant en **Bookmark** = ça annote tes trouvailles, extrait les entités (compte, IP, hôte) et conserve la requête.
+3. **Investiguer et agir.** Ouvre les **pages d'entité UEBA** pour creuser, lance un **playbook** sur une entité bookmarkée, et crée directement une **règle analytique**, un **indicateur de menace** ou un **incident** à partir d'une trouvaille.
+4. **Suivre les résultats.** Marque l'hypothèse comme **confirmée ou non**, laisse des notes détaillées dans les commentaires. La chasse lie automatiquement les règles et incidents créés, et la barre de métriques mesure l'impact de ton programme de hunting.
+
 
 
 ### 5.3 Fonctionnalités du data lake
@@ -950,19 +955,7 @@ Sentinel > **Threat management > Hunting**. Exécute plusieurs requêtes intégr
 
 ---
 
-## Auto-évaluation des compétences
 
-Ne coche chaque point que si tu peux le faire sans le guide :
-
-- Expliquer où vit chaque type de données et quels outils peuvent les utiliser (workspace vs Defender XDR).
-- Configurer un connecteur avec une DCR, prouver que les données arrivent, et réparer un connecteur qui affiche Connected mais n'ingère rien.
-- Construire une règle planifiée et une règle NRT avec mappage d'entités, custom details et titres dynamiques.
-- Construire une détection custom Defender avec des actions de réponse, et énoncer son tableau fréquence-vs-lookback.
-- Créer une règle d'automatisation et un playbook, et nommer les trois identités et permissions impliquées.
-- Ajuster une anomalie avec le Flighting, et lire la page MITRE ATT&CK de façon critique.
-- Investiguer un incident de bout en bout : entités, timeline, live response, isoler et libérer, classer et résoudre.
-- Écrire du KQL avec des filtres, `summarize`, `join` et des bins de temps, à la fois dans Log Analytics et Advanced hunting.
-- Construire un classeur avec un paramètre, et expliquer les recommandations de SOC optimization.
 
 ## Nettoyage
 
@@ -975,6 +968,6 @@ Ne coche chaque point que si tu peux le faire sans le guide :
 7. Vérifie **Billing > Your products** : tout réglé sur annulation à l'expiration, rien en renouvellement.
 8. Pour continuer à pratiquer, garde le tenant et la VM VMware (restaure à `clean`) et reconstruis le côté Azure au besoin.
 
-
+---
 
 > RETOUR AU [README](../README.md).
