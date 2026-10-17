@@ -50,19 +50,11 @@ Comptes SOC, selon le principe du moindre privilège :
 ## ⚡ Workflow 
 
 La télémétrie des 3 VM et des services d'identité remonte vers Sentinel et Defender XDR.
-Les **règles analytiques** (scheduled et near-real time) et les **détections personnalisées**
-lèvent des alertes, regroupées en **incidents**. À la création d'un incident, une **règle
-d'automatisation** l'assigne, l'étiquette, ajoute des tâches de triage et déclenche un
-**playbook Logic App** qui écrit un commentaire structuré.
+Les **règles analytiques** (scheduled et near-real time) et les **détections personnalisées** lèvent des alertes, regroupées en **incidents**. À la création d'un incident, une **règle d'automatisation** l'assigne, l'étiquette, ajoute des tâches de triage et déclenche un **playbook Logic App** qui écrit un commentaire structuré.
 
-L'analyste (`soc.analyst`) prend l'incident, l'investigue (récit d'attaque, entités,
-chronologie), le documente dans son template (temps en UTC, faits avant
-conclusions), le **classe** (*True/Benign/False positive*) puis **répond** (isolation
-d'appareil, live response). La **threat hunting** en KQL complète le tout.
+L'analyste (`soc.analyst`) prend l'incident, l'investigue (récit d'attaque, entités, chronologie), le documente dans son template (temps en UTC, faits avant conclusions), le **classe** (*True/Benign/False positive*) puis **répond** (isolation d'appareil, live response). La **threat hunting** en KQL complète le tout.
 
-3 identités, 3 permissions : la personne qui construit (rôles Azure), le compte de
-service de Sentinel qui exécute le playbook, et la managed identity du playbook qui réécrit
-dans l'incident > un bon rappel du principe du moindre privilège.
+3 identités, 3 permissions : la personne qui construit (rôles Azure), le compte de service de Sentinel qui exécute le playbook, et la managed identity du playbook qui réécrit dans l'incident > un bon rappel du principe du moindre privilège.
 
 ---
 
@@ -93,7 +85,7 @@ dans l'incident > un bon rappel du principe du moindre privilège.
 
 ## 📂 Documentation
 
-👉 **[Guide détaillé des phases](docs/GUIDE.md)** — le guide step-by-step complet (phases 0 à 5), avec les explications simplifiées (ELI5), les leçons tirées du déploiement.
+👉 **[Guide détaillé des phases](docs/GUIDE.md)** → guide step-by-step complet.
 
 ---
 
@@ -108,7 +100,7 @@ J'étends présentement mes compétences vers la **gestion des identités et des
 Ce projet est un lab pédagogique destiné à l'apprentissage et à la pratique des opérations de sécurité Microsoft.
 
 - Les attaques sont simulées sur des VM et des comptes de test, jamais sur un poste personnel ou un environnement de production.
-- Les noms de tenant, adresses IP publiques et identifiants réels ont été retirés ou floutés.
+- Les noms de tenant, adresses IP publiques et identifiants réels ont été retirés.
 - Les configurations sont simplifiées à des fins d'étude et ne constituent pas une solution prête pour la production.
 
 ---
